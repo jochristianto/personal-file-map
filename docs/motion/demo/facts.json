@@ -1,0 +1,2208 @@
+{
+ "today": "2026-11-10",
+ "state": {
+  "title": "Personal File Map",
+  "version": "0.0.2",
+  "links": {
+   "repo": "https://github.com/jochristianto/personal-file-map",
+   "issues": "https://github.com/jochristianto/personal-file-map/issues/new/choose",
+   "faq": "https://github.com/jochristianto/personal-file-map/blob/main/FAQ.md"
+  },
+  "platform": "darwin",
+  "appDir": "2026",
+  "configFile": "/Users/demo/Bills/2026/config.local.json",
+  "configExists": false,
+  "configError": null,
+  "settings": {
+   "folder": "./",
+   "bills": [],
+   "meters": {
+    "bills": [],
+    "reader": "off",
+    "models": {}
+   }
+  },
+  "defaultBills": [],
+  "defaultFolder": "./",
+  "providers": [
+   {
+    "id": "anthropic",
+    "label": "Claude (Anthropic)",
+    "models": [
+     {
+      "id": "claude-haiku-5-5",
+      "note": "cheapest, recommended"
+     },
+     {
+      "id": "claude-sonnet-5-5",
+      "note": "more careful"
+     },
+     {
+      "id": "claude-opus-5-5",
+      "note": "most capable"
+     }
+    ],
+    "keyPrefix": "sk-ant-",
+    "keyUrl": "https://platform.claude.com/settings/keys"
+   },
+   {
+    "id": "openai",
+    "label": "ChatGPT (OpenAI)",
+    "models": [
+     {
+      "id": "gpt-5.4-mini",
+      "note": "cheap, recommended"
+     },
+     {
+      "id": "gpt-5.4-nano",
+      "note": "cheapest"
+     },
+     {
+      "id": "gpt-5.4",
+      "note": "more careful"
+     }
+    ],
+    "keyPrefix": "sk-",
+    "keyUrl": "https://platform.openai.com/api-keys"
+   }
+  ],
+  "keys": {
+   "anthropic": {
+    "saved": false,
+    "pending": null,
+    "env": true,
+    "hint": "7f3a"
+   },
+   "openai": {
+    "saved": false,
+    "pending": null,
+    "env": false,
+    "hint": ""
+   }
+  },
+  "readingsName": "personal-file-map.readings.json"
+ },
+ "preview": {
+  "ok": true,
+  "dir": "/Users/demo/Bills/2026",
+  "year": 2026,
+  "files": 178,
+  "skipped": 3,
+  "bills": [
+   {
+    "name": "Car Loan",
+    "months": [
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Charity",
+    "months": [
+     5
+    ],
+    "transactions": [
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Credit Card",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Electricity",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Groceries Market",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Groceries Online",
+    "months": [
+     3,
+     4,
+     9
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Gym",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "HOA Invoice",
+    "months": [
+     1,
+     4,
+     7,
+     10
+    ],
+    "transactions": [
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "HOA Payment",
+    "months": [
+     1,
+     4,
+     7
+    ],
+    "transactions": [
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Home Meter",
+    "months": [
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     2,
+     1,
+     2,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Insurance Car",
+    "months": [
+     1,
+     4,
+     7,
+     10
+    ],
+    "transactions": [
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Insurance Health",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Insurance Life",
+    "months": [
+     1,
+     7
+    ],
+    "transactions": [
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Internet Invoice",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Internet Payment",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Internet Receipt",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Mortgage Received",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Mortgage Sent",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0
+    ]
+   },
+   {
+    "name": "Phone",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Property Tax",
+    "months": [
+     1,
+     2
+    ],
+    "transactions": [
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Rent",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0
+    ]
+   },
+   {
+    "name": "Salary",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0
+    ]
+   },
+   {
+    "name": "Streaming",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Water",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0
+    ]
+   }
+  ]
+ },
+ "previewAfter": {
+  "ok": true,
+  "dir": "/Users/demo/Bills/2026",
+  "year": 2026,
+  "files": 178,
+  "skipped": 3,
+  "bills": [
+   {
+    "name": "Car Loan",
+    "months": [
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Charity",
+    "months": [
+     5
+    ],
+    "transactions": [
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Credit Card",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Electricity",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Groceries Market",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Groceries Online",
+    "months": [
+     3,
+     4,
+     9
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Gym",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "HOA Invoice",
+    "months": [
+     1,
+     4,
+     7,
+     10
+    ],
+    "transactions": [
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "HOA Payment",
+    "months": [
+     1,
+     4,
+     7
+    ],
+    "transactions": [
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Home Meter",
+    "months": [
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     2,
+     1,
+     2,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Insurance Car",
+    "months": [
+     1,
+     4,
+     7,
+     10
+    ],
+    "transactions": [
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Insurance Health",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Insurance Life",
+    "months": [
+     1,
+     7
+    ],
+    "transactions": [
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Internet Invoice",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Internet Payment",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Internet Receipt",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Mortgage Received",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Mortgage Sent",
+    "months": [
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11
+    ],
+    "transactions": [
+     0,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0
+    ]
+   },
+   {
+    "name": "Phone",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Property Tax",
+    "months": [
+     1,
+     2
+    ],
+    "transactions": [
+     1,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Rent",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0
+    ]
+   },
+   {
+    "name": "Salary",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0
+    ]
+   },
+   {
+    "name": "Streaming",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0
+    ]
+   },
+   {
+    "name": "Water",
+    "months": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9
+    ],
+    "transactions": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     0,
+     0
+    ]
+   }
+  ]
+ },
+ "beforeRead": {
+  "ok": true,
+  "reader": "Claude (Anthropic) · claude-haiku-5-5",
+  "blocked": null,
+  "read": null,
+  "meters": [
+   {
+    "meter": "Home Meter",
+    "totalUsed": 0,
+    "cycles": 0,
+    "perDay": null,
+    "rateDays": null,
+    "nextTopUp": null,
+    "totalToppedUp": 0,
+    "spent": [],
+    "spentUnknown": 1,
+    "topUps": 1,
+    "balance": null,
+    "runsOut": null,
+    "unread": 13,
+    "unreadPayments": 5,
+    "ai": {
+     "photos": 0,
+     "usage": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0
+     },
+     "costUsd": 0,
+     "unpriced": 0
+    },
+    "problems": [],
+    "photos": [
+     {
+      "file": "202607 Home Meter #1 Before.jpg",
+      "takenAt": "2026-07-04T12:12:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": null
+     },
+     {
+      "file": "202607 Home Meter #1 Input.jpg",
+      "takenAt": "2026-07-04T12:13:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "input",
+      "reading": null
+     },
+     {
+      "file": "202607 Home Meter #1 After.jpg",
+      "takenAt": "2026-07-04T12:14:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "after",
+      "reading": null
+     },
+     {
+      "file": "202608 Home Meter #1 Before.jpg",
+      "takenAt": "2026-08-06T12:05:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": null
+     },
+     {
+      "file": "202608 Home Meter #1 Input.jpg",
+      "takenAt": "2026-08-06T12:06:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "input",
+      "reading": null
+     },
+     {
+      "file": "202608 Home Meter #1 After.jpg",
+      "takenAt": "2026-08-06T12:07:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "after",
+      "reading": null
+     },
+     {
+      "file": "202609 Home Meter #1 Before.jpg",
+      "takenAt": "2026-09-15T05:00:06.000Z",
+      "dateSource": "month",
+      "paymentFile": null,
+      "label": "before",
+      "reading": null
+     },
+     {
+      "file": "202609 Home Meter #1 Input.jpg",
+      "takenAt": "2026-09-15T05:00:07.000Z",
+      "dateSource": "month",
+      "paymentFile": null,
+      "label": "input",
+      "reading": null
+     },
+     {
+      "file": "202609 Home Meter #1 After.jpg",
+      "takenAt": "2026-09-15T05:00:08.000Z",
+      "dateSource": "month",
+      "paymentFile": null,
+      "label": "after",
+      "reading": null
+     },
+     {
+      "file": "202610 Home Meter #1 Before.jpg",
+      "takenAt": "2026-10-14T11:42:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": null
+     },
+     {
+      "file": "202610 Home Meter #1 Input.jpg",
+      "takenAt": "2026-10-14T11:43:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "input",
+      "reading": null
+     },
+     {
+      "file": "202610 Home Meter #1 After.jpg",
+      "takenAt": "2026-10-14T11:44:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "after",
+      "reading": null
+     },
+     {
+      "file": "202610 Home Meter #2 Before.jpg",
+      "takenAt": "2026-10-29T00:58:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": null
+     }
+    ]
+   }
+  ]
+ },
+ "afterRead": {
+  "ok": true,
+  "reader": "Claude (Anthropic) · claude-haiku-5-5",
+  "blocked": null,
+  "read": {
+   "read": 18,
+   "failed": [],
+   "stopped": null,
+   "totals": {
+    "photos": 18,
+    "usage": {
+     "input": 47121,
+     "output": 2709,
+     "cacheRead": 0,
+     "cacheWrite": 0
+    },
+    "costUsd": 0.006066600000000001,
+    "unpriced": 0
+   }
+  },
+  "meters": [
+   {
+    "meter": "Home Meter",
+    "totalUsed": 1105.02,
+    "cycles": 4,
+    "perDay": 9.48260659694288,
+    "rateDays": 116.53125,
+    "nextTopUp": "2026-10-29T00:58:00.000Z",
+    "totalToppedUp": 1000,
+    "spent": [
+     {
+      "currency": "USD",
+      "amount": 169.4,
+      "topUps": 5,
+      "perKwh": 0.154
+     }
+    ],
+    "spentUnknown": 0,
+    "topUps": 5,
+    "balance": {
+     "kwh": 2.02,
+     "at": "2026-10-29T00:58:00.000Z"
+    },
+    "runsOut": "2026-10-29T06:04:45.065Z",
+    "unread": 0,
+    "unreadPayments": 0,
+    "ai": {
+     "photos": 18,
+     "usage": {
+      "input": 47121,
+      "output": 2709,
+      "cacheRead": 0,
+      "cacheWrite": 0
+     },
+     "costUsd": 0.006066600000000001,
+     "unpriced": 0
+    },
+    "problems": [
+     {
+      "at": "2026-09-12T11:41:00.000Z",
+      "estimated": false,
+      "problem": "7864.00 + 250.00 isn't 328.64: check these photos"
+     }
+    ],
+    "photos": [
+     {
+      "file": "202607 Home Meter #1 Before.jpg",
+      "takenAt": "2026-07-04T12:12:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": {
+       "kind": "balance",
+       "kwh": 58.1,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2590,
+        "output": 140,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.000329
+      }
+     },
+     {
+      "file": "202607 Home Meter #1 Input.jpg",
+      "takenAt": "2026-07-04T12:13:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "input",
+      "reading": {
+       "kind": "topup",
+       "kwh": 250,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2627,
+        "output": 153,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.0003392
+      }
+     },
+     {
+      "file": "202607 Home Meter #1 After.jpg",
+      "takenAt": "2026-07-04T12:14:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "after",
+      "reading": {
+       "kind": "balance",
+       "kwh": 308.1,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2604,
+        "output": 142,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.00033140000000000003
+      }
+     },
+     {
+      "file": "202608 Home Meter #1 Before.jpg",
+      "takenAt": "2026-08-06T12:05:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": {
+       "kind": "balance",
+       "kwh": 64.2,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2641,
+        "output": 155,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.0003416
+      }
+     },
+     {
+      "file": "202608 Home Meter #1 Input.jpg",
+      "takenAt": "2026-08-06T12:06:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "input",
+      "reading": {
+       "kind": "topup",
+       "kwh": 250,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2618,
+        "output": 144,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.00033380000000000004
+      }
+     },
+     {
+      "file": "202608 Home Meter #1 After.jpg",
+      "takenAt": "2026-08-06T12:07:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "after",
+      "reading": {
+       "kind": "balance",
+       "kwh": 314.2,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2595,
+        "output": 157,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.000338
+      }
+     },
+     {
+      "file": "202609 Home Meter #1 Before.jpg",
+      "takenAt": "2026-09-12T11:39:00.000Z",
+      "dateSource": "payment",
+      "paymentFile": "202609 Home Meter #1 Payment.jpg",
+      "label": "before",
+      "reading": {
+       "kind": "balance",
+       "kwh": 7864,
+       "code": "",
+       "confidence": "medium",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2632,
+        "output": 146,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.0003362
+      }
+     },
+     {
+      "file": "202609 Home Meter #1 Input.jpg",
+      "takenAt": "2026-09-12T11:41:00.000Z",
+      "dateSource": "payment",
+      "paymentFile": "202609 Home Meter #1 Payment.jpg",
+      "label": "input",
+      "reading": {
+       "kind": "topup",
+       "kwh": 250,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2609,
+        "output": 159,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.00034040000000000003
+      }
+     },
+     {
+      "file": "202609 Home Meter #1 After.jpg",
+      "takenAt": "2026-09-12T11:42:00.000Z",
+      "dateSource": "payment",
+      "paymentFile": "202609 Home Meter #1 Payment.jpg",
+      "label": "after",
+      "reading": {
+       "kind": "balance",
+       "kwh": 328.64,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2646,
+        "output": 148,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.00033860000000000004
+      }
+     },
+     {
+      "file": "202610 Home Meter #1 Before.jpg",
+      "takenAt": "2026-10-14T11:42:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": {
+       "kind": "balance",
+       "kwh": 72.52,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2623,
+        "output": 161,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.00034280000000000004
+      }
+     },
+     {
+      "file": "202610 Home Meter #1 Input.jpg",
+      "takenAt": "2026-10-14T11:43:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "input",
+      "reading": {
+       "kind": "topup",
+       "kwh": 250,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2600,
+        "output": 150,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.000335
+      }
+     },
+     {
+      "file": "202610 Home Meter #1 After.jpg",
+      "takenAt": "2026-10-14T11:44:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "after",
+      "reading": {
+       "kind": "balance",
+       "kwh": 322.52,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2637,
+        "output": 163,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.0003452
+      }
+     },
+     {
+      "file": "202610 Home Meter #2 Before.jpg",
+      "takenAt": "2026-10-29T00:58:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": {
+       "kind": "balance",
+       "kwh": 2.02,
+       "code": "",
+       "confidence": "low",
+       "note": "Glare covers part of the display.",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2614,
+        "output": 152,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.0003374
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "afterEdit": {
+  "ok": true,
+  "reader": "Claude (Anthropic) · claude-haiku-5-5",
+  "blocked": null,
+  "read": null,
+  "meters": [
+   {
+    "meter": "Home Meter",
+    "totalUsed": 784.52,
+    "cycles": 4,
+    "perDay": 7.69294382022472,
+    "rateDays": 101.97916666666667,
+    "nextTopUp": "2026-11-16T12:38:49.063Z",
+    "totalToppedUp": 1000,
+    "spent": [
+     {
+      "currency": "USD",
+      "amount": 169.4,
+      "topUps": 5,
+      "perKwh": 0.154
+     }
+    ],
+    "spentUnknown": 0,
+    "topUps": 5,
+    "balance": {
+     "kwh": 322.52,
+     "at": "2026-10-14T11:44:00.000Z"
+    },
+    "runsOut": "2026-11-25T09:54:45.092Z",
+    "unread": 0,
+    "unreadPayments": 0,
+    "ai": {
+     "photos": 18,
+     "usage": {
+      "input": 47121,
+      "output": 2709,
+      "cacheRead": 0,
+      "cacheWrite": 0
+     },
+     "costUsd": 0.006066600000000001,
+     "unpriced": 0
+    },
+    "problems": [],
+    "photos": [
+     {
+      "file": "202607 Home Meter #1 Before.jpg",
+      "takenAt": "2026-07-04T12:12:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": {
+       "kind": "balance",
+       "kwh": 58.1,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2590,
+        "output": 140,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.000329
+      }
+     },
+     {
+      "file": "202607 Home Meter #1 Input.jpg",
+      "takenAt": "2026-07-04T12:13:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "input",
+      "reading": {
+       "kind": "topup",
+       "kwh": 250,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2627,
+        "output": 153,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.0003392
+      }
+     },
+     {
+      "file": "202607 Home Meter #1 After.jpg",
+      "takenAt": "2026-07-04T12:14:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "after",
+      "reading": {
+       "kind": "balance",
+       "kwh": 308.1,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2604,
+        "output": 142,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.00033140000000000003
+      }
+     },
+     {
+      "file": "202608 Home Meter #1 Before.jpg",
+      "takenAt": "2026-08-06T12:05:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": {
+       "kind": "balance",
+       "kwh": 64.2,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2641,
+        "output": 155,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.0003416
+      }
+     },
+     {
+      "file": "202608 Home Meter #1 Input.jpg",
+      "takenAt": "2026-08-06T12:06:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "input",
+      "reading": {
+       "kind": "topup",
+       "kwh": 250,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2618,
+        "output": 144,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.00033380000000000004
+      }
+     },
+     {
+      "file": "202608 Home Meter #1 After.jpg",
+      "takenAt": "2026-08-06T12:07:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "after",
+      "reading": {
+       "kind": "balance",
+       "kwh": 314.2,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2595,
+        "output": 157,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.000338
+      }
+     },
+     {
+      "file": "202609 Home Meter #1 Before.jpg",
+      "takenAt": "2026-09-12T11:39:00.000Z",
+      "dateSource": "payment",
+      "paymentFile": "202609 Home Meter #1 Payment.jpg",
+      "label": "before",
+      "reading": {
+       "kind": "balance",
+       "kwh": 78.64,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "you",
+       "edited": true,
+       "usage": {
+        "input": 2632,
+        "output": 146,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.0003362
+      }
+     },
+     {
+      "file": "202609 Home Meter #1 Input.jpg",
+      "takenAt": "2026-09-12T11:41:00.000Z",
+      "dateSource": "payment",
+      "paymentFile": "202609 Home Meter #1 Payment.jpg",
+      "label": "input",
+      "reading": {
+       "kind": "topup",
+       "kwh": 250,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2609,
+        "output": 159,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.00034040000000000003
+      }
+     },
+     {
+      "file": "202609 Home Meter #1 After.jpg",
+      "takenAt": "2026-09-12T11:42:00.000Z",
+      "dateSource": "payment",
+      "paymentFile": "202609 Home Meter #1 Payment.jpg",
+      "label": "after",
+      "reading": {
+       "kind": "balance",
+       "kwh": 328.64,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2646,
+        "output": 148,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.00033860000000000004
+      }
+     },
+     {
+      "file": "202610 Home Meter #1 Before.jpg",
+      "takenAt": "2026-10-14T11:42:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": {
+       "kind": "balance",
+       "kwh": 72.52,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2623,
+        "output": 161,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.00034280000000000004
+      }
+     },
+     {
+      "file": "202610 Home Meter #1 Input.jpg",
+      "takenAt": "2026-10-14T11:43:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "input",
+      "reading": {
+       "kind": "topup",
+       "kwh": 250,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2600,
+        "output": 150,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.000335
+      }
+     },
+     {
+      "file": "202610 Home Meter #1 After.jpg",
+      "takenAt": "2026-10-14T11:44:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "after",
+      "reading": {
+       "kind": "balance",
+       "kwh": 322.52,
+       "code": "",
+       "confidence": "high",
+       "note": "",
+       "by": "anthropic/claude-haiku-5-5",
+       "edited": false,
+       "usage": {
+        "input": 2637,
+        "output": 163,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.0003452
+      }
+     },
+     {
+      "file": "202610 Home Meter #2 Before.jpg",
+      "takenAt": "2026-10-29T00:58:00.000Z",
+      "dateSource": "photo",
+      "paymentFile": null,
+      "label": "before",
+      "reading": {
+       "kind": "other",
+       "kwh": 0,
+       "code": "",
+       "confidence": "high",
+       "note": "Glare covers part of the display.",
+       "by": "you",
+       "edited": true,
+       "usage": {
+        "input": 2614,
+        "output": 152,
+        "cacheRead": 0,
+        "cacheWrite": 0
+       },
+       "costUsd": 0.0003374
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "generated": {
+  "ok": true,
+  "out": "/Users/demo/Bills/2026/personal-file-map.output.pdf",
+  "bills": 24,
+  "files": 178,
+  "due": 11,
+  "missing": 4,
+  "added": 0,
+  "meterRead": 0,
+  "meterProblem": null,
+  "configFile": "/Users/demo/Bills/2026/config.local.json"
+ }
+}

@@ -125,14 +125,14 @@ export async function scanDirectory(dir: string, year: number, self: string | nu
  *  - "#1", "#2": which payment or top-up of the month (counted: two of them = 2 transactions)
  *  - "1", "2", "3": which document or step of the payment (not counted)
  *  - "Photo …": what the picture is
- * So "PBB Klaska 1 SPPT" and "PBB Klaska 3 Lunas" are the bill "PBB Klaska" with one payment, and
- * "Klaska PLN #1 Before" and "Klaska PLN #2 After" are the bill "Klaska PLN" with two.
+ * So "Property Tax 1 Assessment" and "Property Tax 3 Receipt" are the bill "Property Tax" with one payment, and
+ * "Home Meter #1 Before" and "Home Meter #2 After" are the bill "Home Meter" with two.
  */
 export function splitBillName(fullName: string): { bill: string; txn: number | null } {
   const words = fullName.split(" ");
   const end = words.findIndex((w, i) => i > 0 && (/^#\d{1,2}$/.test(w) || /^\d{1,2}$/.test(w) || /^(photo|foto)$/i.test(w)));
   if (end < 0) return { bill: fullName, txn: null };
-  const marker = words.slice(end).find((w) => /^#\d{1,2}$/.test(w)); // also after a step: "PBB Klaska 2 #2 Payment"
+  const marker = words.slice(end).find((w) => /^#\d{1,2}$/.test(w)); // also after a step: "Property Tax 2 #2 Payment"
   return { bill: words.slice(0, end).join(" "), txn: marker ? Number(marker.slice(1)) : null };
 }
 

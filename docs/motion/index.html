@@ -1,0 +1,1305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Personal File Map · demo</title>
+<!--
+  The README's demo video, as one page seeked frame by frame: render.mjs calls window.seek(t) for every frame.
+  Every style is computed from t inside seek(): no CSS transitions, no timers, nothing kept between frames.
+  Springs are closed-form step responses; a value that changes target several times is the sum of one spring per
+  change, and every track is periodic over the loop (the previous cycle's springs are summed in too), so the
+  last frame flows into the first. 124 BPM (the song's measured tempo), 16 bars, 64 beats.
+  UI, labels and numbers: the app's own (src/window.html, src/pdf.ts), on the demo folder made by demo/make-demo.mjs.
+-->
+<style>
+  @font-face { font-family: Inter; font-weight: 400; src: url(../../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family: Inter; font-weight: 500; src: url(../../node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family: Inter; font-weight: 600; src: url(../../node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family: Inter; font-weight: 700; src: url(../../node_modules/@fontsource/inter/files/inter-latin-700-normal.woff2) format("woff2"); }
+
+  /* The app's tokens (src/window.html, light) */
+  :root {
+    --bg: #fafafa; --card: #ffffff; --fg: #09090b; --fg2: #27272a; --muted: #71717a; --faint: #a1a1aa;
+    --border: #e4e4e7; --line: #f4f4f5; --input: #d4d4d8; --hover: #f4f4f5;
+    --primary: #18181b; --primary-fg: #fafafa; --ring: #a1a1aa;
+    --on: #3f3f46; --off: #f4f4f5; --dot: #16a34a;
+    --green-bg: #dcfce7; --green: #15803d; --amber-bg: #fef3c7; --amber: #b45309; --amber-border: #fde68a;
+    --rose-bg: #ffe4e6; --rose: #be123c; --rose-border: #fecdd3;
+    --canvas: #f5f5f4;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1440px; height: 1440px; overflow: hidden; background: var(--canvas); }
+  body { font: 14px/1.45 Inter, -apple-system, sans-serif; color: var(--fg); -webkit-font-smoothing: antialiased; font-kerning: none; }
+  #frame { position: absolute; inset: 0; overflow: hidden; background: var(--canvas); }
+  #world { position: absolute; left: 0; top: 0; width: 1280px; height: 1040px; transform-origin: 0 0; }
+  #hud { position: absolute; inset: 0; pointer-events: none; }
+  .abs { position: absolute; }
+  .stack { display: inline-grid; }
+  .stack > * { grid-area: 1 / 1; }
+
+  /* ── The app's components ── */
+  .app { font: 14px/1.45 Inter, sans-serif; color: var(--fg); }
+  .app h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0; line-height: 1.45; }
+  .app h2 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .app h3 { font-size: 14px; font-weight: 600; margin: 0; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+  .help { color: var(--muted); font-size: 13px; margin: 2px 0 14px; }
+  .note { font-size: 12.5px; color: var(--muted); }
+  code, .code { font: 12px var(--mono); background: var(--line); padding: 1px 5px; border-radius: 4px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--input);
+    background: var(--card); font-weight: 500; white-space: nowrap; font-size: 14px; }
+  .btn svg { width: 15px; height: 15px; }
+  .btn.stack, .chip.stack { display: inline-grid; justify-items: center; align-items: center; }
+  .btn.primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  .btn.icon { width: 32px; padding: 0; }
+  .btn .count { color: var(--muted); font-weight: 500; }
+  .inp { height: 34px; border: 1px solid var(--input); border-radius: 8px; background: var(--card); padding: 0 10px; line-height: 32px; white-space: nowrap; overflow: hidden; }
+  .inp .ph { color: var(--faint); }
+  .sel { height: 34px; border: 1px solid var(--input); border-radius: 8px; background: var(--card); padding: 0 34px 0 10px; line-height: 32px; white-space: nowrap; position: relative; }
+  .sel::after { content: ""; position: absolute; right: 12px; top: 50%; width: 12px; height: 12px; margin-top: -6px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / 12px; }
+  .chip { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .badge { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 5px; background: var(--amber-bg); color: var(--amber); text-transform: uppercase; letter-spacing: .03em; }
+  .flag { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+  .flag.yes { background: var(--rose-bg); color: var(--rose); }
+  .flag.no { background: var(--line); color: var(--muted); }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); align-items: center; margin: 0 0 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+  .months { display: flex; gap: 4px; }
+  .m { position: relative; flex: none; width: 32px; height: 32px; border-radius: 6px; font-size: 12px; line-height: 32px; text-align: center; font-weight: 500; }
+  .m .dot { position: absolute; left: 50%; bottom: -8px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: var(--dot); }
+  .m .n { position: absolute; top: -5px; right: -5px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--dot); color: #fff; font-size: 9.5px; font-weight: 700; line-height: 14px; text-align: center; }
+  .row { position: absolute; left: 0; right: 0; border-bottom: 1px solid var(--line); }
+  .row-main { position: absolute; left: 0; right: 0; top: 10px; height: 34px; display: grid; gap: 10px; align-items: center; grid-template-columns: minmax(160px, 1fr) 180px max-content 140px 32px; }
+  .name-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .name-cell .inp { flex: 1; }
+  .zap { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 8px; color: var(--faint); }
+  .zap svg { width: 15px; height: 15px; }
+  .coverage { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .row-detail { position: absolute; left: 2px; top: 52px; display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+  .row-detail .sel { height: 30px; line-height: 28px; min-width: 72px; }
+  .footer { position: absolute; left: 0; right: 0; bottom: 0; height: 68px; background: rgba(255,255,255,.92); border-top: 1px solid var(--border); }
+  .status { font-size: 13px; color: var(--muted); }
+  .status strong { color: var(--fg); font-weight: 600; }
+  .status.ok strong { color: var(--green); }
+  .footer-links { font-size: 12px; color: var(--faint); }
+  .footer-links span { color: var(--muted); }
+  .spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; display: inline-block; vertical-align: -2px; margin-right: 8px; }
+  .sk { background: var(--off); border-radius: 6px; }
+  .ai-badge { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px 0 6px; border-radius: 999px; font-size: 11.5px; font-weight: 600; color: #7c3aed; background: #f3e8ff; letter-spacing: .02em; }
+  .ai-badge svg { width: 13px; height: 13px; }
+  .zap-inline { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; background: var(--amber-bg); color: var(--amber); vertical-align: -4px; }
+  .zap-inline svg { width: 12px; height: 12px; }
+  .examples { list-style: none; margin: 6px 0 8px; padding: 10px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); display: grid; gap: 7px; }
+  .examples li { display: grid; gap: 1px; font-size: 12px; color: var(--muted); }
+  .examples code { background: none; padding: 0; font-size: 12px; color: var(--fg); }
+  .field { display: grid; gap: 6px; margin-bottom: 12px; }
+  .field > label { font-size: 12.5px; font-weight: 500; color: var(--fg2); }
+  .linkish { color: var(--fg2); text-decoration: underline; font-weight: 500; }
+  .meter-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .meter-stats { font-size: 12.5px; color: var(--muted); text-align: right; }
+  .meter-stats strong { color: var(--fg); font-weight: 600; }
+  .readings-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  table.readings { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.readings th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--bg); padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.readings th.num { text-align: right; }
+  table.readings th small { display: block; font-weight: 500; }
+  table.readings td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; height: 47px; }
+  table.readings tr:last-child td { border-bottom: 0; }
+  table.readings tbody tr:nth-child(even) td { background: var(--bg); }
+  table.readings td.file { width: 100%; white-space: nowrap; }
+  table.readings td.when { white-space: nowrap; color: var(--fg2); }
+  table.readings td.when sup { color: var(--faint); font-size: 10px; margin-left: 2px; }
+  table.readings td.when .est, table.readings td.when .est sup { color: var(--amber); }
+  table.readings td.by { color: var(--muted); font-size: 12px; min-width: 150px; max-width: 240px; line-height: 1.35; }
+  table.readings td.by small { display: block; font-size: 11.5px; color: var(--faint); }
+  table.readings td.by .warn, table.readings td.by .warn small { color: var(--amber); }
+  table.readings td.ai { white-space: nowrap; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+  table.readings td.ai small { display: block; font-size: 11.5px; color: var(--faint); }
+  table.readings .sel { height: 30px; line-height: 28px; width: 112px; }
+  table.readings .inp { height: 30px; line-height: 28px; width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
+  .date-notes { margin: 8px 2px 0; font-size: 12px; color: var(--muted); }
+  .date-notes .mark { display: inline-block; min-width: 14px; font-weight: 600; color: var(--faint); }
+  .date-notes .est, .date-notes .est .mark { color: var(--amber); }
+  .problems { margin-top: 8px; font-size: 12.5px; color: var(--rose); }
+  .schedule { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; color: var(--muted); }
+  .schedule-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .schedule-head strong { color: var(--fg); font-weight: 600; font-size: 13px; }
+  .schedule .months { display: grid; grid-template-columns: repeat(6, 32px); gap: 4px; margin-bottom: 8px; }
+  .photo-view { display: grid; place-items: center; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); overflow: hidden; }
+
+  /* Native select menus, drawn in the app's tokens */
+  .menu { position: absolute; background: rgba(255,255,255,.98); border: 1px solid var(--border); border-radius: 9px; padding: 4px; box-shadow: 0 10px 30px rgba(9,9,11,.14); font-size: 13px; }
+  .menu .item { position: relative; height: 26px; line-height: 26px; padding: 0 10px 0 24px; white-space: nowrap; color: var(--fg); }
+  .menu .item .check { position: absolute; left: 8px; top: 0; font-size: 11px; color: var(--fg2); }
+  .menu .hl { position: absolute; left: 4px; right: 4px; border-radius: 5px; background: var(--border); }
+
+  /* The PDF (src/pdf.ts), drawn in PDF points scaled to the page */
+  .pdf { font-family: Inter, sans-serif; color: #09090b; }
+  .pdf .t { position: absolute; white-space: nowrap; }
+  .pdf .pcard { position: absolute; background: #fff; border: 1px solid #e4e4e7; border-radius: 16px; }
+  .pdf .pill { position: absolute; border-radius: 999px; font-weight: 600; white-space: nowrap; text-align: center; }
+  .pdf .chipy { display: inline-block; border-radius: 999px; padding: 0 10px; height: 23px; line-height: 21px; font-size: 12.5px; border: 1px solid #fde68a; background: #fef3c7; color: #b45309; margin: 0 6px 8px 0; }
+  .lbl { position: absolute; font-size: 15px; color: var(--muted); font-weight: 500; white-space: nowrap; transform: translateX(-50%); }
+
+  /* Overlays drawn over the frame */
+  .keycap { position: absolute; width: 74px; height: 74px; border-radius: 14px; background: #fff; border: 1px solid #d4d4d8; border-bottom-width: 4px;
+    font: 500 34px/68px Inter, sans-serif; text-align: center; color: #18181b; }
+  .filechip { position: absolute; white-space: nowrap; font: 500 16px/1 var(--mono); color: #18181b; background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 12px 15px; }
+</style>
+</head>
+<body>
+<div id="frame"><div id="world"></div><div id="hud"></div></div>
+<script>
+"use strict";
+// ══ Time ═════════════════════════════════════════════════════════════════════
+const BPM = 124, B = 60 / BPM, T = 64 * B; // 30.968 s
+/** Seconds at bar.beat (+ a fraction of a beat). */
+const bt = (bar, beat = 1, f = 0) => ((bar - 1) * 4 + (beat - 1) + f) * B;
+
+// ══ Springs ══════════════════════════════════════════════════════════════════
+const SP = { f: 2.3, z: 0.86 };     // default: settles in ~0.45 s, ~0.5 % overshoot
+const FAST = { f: 3.6, z: 0.9 };
+const SNAP = { f: 5.5, z: 0.95 };
+const SOFT = { f: 1.55, z: 0.95 };  // camera
+const CUR = { f: 2.1, z: 0.93 };    // cursor
+/** Closed-form step response of a damped spring, 0 → 1. */
+function S(dt, k = SP) {
+  if (dt <= 0) return 0;
+  const w = 2 * Math.PI * k.f, z = k.z;
+  if (z >= 0.999) return 1 - Math.exp(-w * dt) * (1 + w * dt); // critically damped
+  const wd = w * Math.sqrt(1 - z * z);
+  return 1 - Math.exp(-z * w * dt) * (Math.cos(wd * dt) + (z * w / wd) * Math.sin(wd * dt));
+}
+/**
+ * A value made of one spring per target change: keys [[t, v, k?], …]. Periodic over T: the previous cycle's
+ * springs are summed in too, and the first key's change is measured from the last key's value, so the loop closes.
+ */
+function track(keys, k0 = SP) {
+  keys = keys.slice().sort((a, b) => a[0] - b[0]);
+  const arr = Array.isArray(keys[0][1]);
+  const V = keys.map((k) => (arr ? k[1] : [k[1]]));
+  const n = V[0].length;
+  const last = V[V.length - 1];
+  const D = keys.map((k, i) => ({ t: k[0], k: k[2] || k0, d: V[i].map((x, j) => x - (i ? V[i - 1][j] : last[j])) })).filter((e) => e.d.some((x) => Math.abs(x) > 1e-9));
+  return (t) => {
+    const out = last.slice();
+    for (const e of D) {
+      const s = S(t - e.t, e.k) + S(t - e.t + T, e.k) - 1; // this cycle's spring + last cycle's (settled = 1) − the base
+      for (let j = 0; j < n; j++) out[j] += e.d[j] * s;
+    }
+    return arr ? out : out[0];
+  };
+}
+/** The value of the last key at or before t (wrapping). */
+function step(keys) {
+  keys = keys.slice().sort((a, b) => a[0] - b[0]);
+  return (t) => {
+    let v = keys[keys.length - 1][1];
+    for (const k of keys) if (k[0] <= t) v = k[1];
+    return v;
+  };
+}
+/** Presence in windows [[a, b], …] (b may pass T): springs in at a, out at b. 0 … 1. */
+function vis(t, wins, kin = FAST, kout = FAST) {
+  let v = 0;
+  for (const [a, b] of wins) {
+    let w = 0;
+    for (const c of [-1, 0, 1]) w += S(t - a - c * T, kin) - S(t - b - c * T, kout);
+    v = Math.max(v, w);
+  }
+  return Math.min(1, Math.max(0, v));
+}
+/** A press: down fast, back up. */
+const press = (t, tc) => S(t - tc + 0.05, SNAP) - S(t - tc - 0.07, FAST) + (S(t - tc + 0.05 + T, SNAP) - S(t - tc - 0.07 + T, FAST));
+
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const mix = (a, b, v) => a + (b - a) * v;
+const hex = (s) => [1, 3, 5].map((i) => parseInt(s.slice(i, i + 2), 16));
+const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const mixc = (a, b, v) => a.map((x, i) => mix(x, b[i], v));
+const hash = (a, b) => { let x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return x - Math.floor(x); };
+const fmtInt = (n) => Math.round(n).toLocaleString("en-US");
+
+// ══ DOM ══════════════════════════════════════════════════════════════════════
+function h(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "style" && typeof v === "object") Object.assign(e.style, v);
+    else if (k === "html") e.innerHTML = v;
+    else e.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return e;
+}
+const H = (s) => { const t = document.createElement("template"); t.innerHTML = s.trim(); return t.content.firstElementChild; };
+/** Shows an element at presence v: fades and un-blurs in, with an optional rise. */
+function fx(el, v, o = {}) {
+  const blur = o.blur ?? 6, dy = o.dy ?? 0, sc = o.scale ?? 0;
+  el.style.opacity = v.toFixed(4);
+  el.style.visibility = v < 0.003 ? "hidden" : "visible";
+  el.style.filter = v > 0.995 || blur === 0 ? "none" : `blur(${((1 - v) * blur).toFixed(2)}px)`;
+  if (dy || sc || o.tx) el.style.transform = `translate(${o.tx || 0}px, ${((1 - v) * dy).toFixed(2)}px) scale(${(1 - (1 - v) * sc).toFixed(4)})`;
+}
+const ICON = {
+  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>',
+  zap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>',
+  sparkle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg>',
+};
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+
+const world = document.getElementById("world");
+const hud = document.getElementById("hud");
+
+// ══ Data: the demo folder, as the app shows it (docs/motion/demo/facts.json, out/motion-demo/pages) ══════════
+const DIR = "/Users/demo/Bills/2026";
+const ROWS = [ // the Bills dialog, scrolled to Credit Card; [name, months with a file, payments per month]
+  ["Credit Card", range(1, 10)], ["Electricity", [1, 2, 3, 4, 5, 7, 8, 9, 10]], ["Groceries Market", range(3, 7)], ["Groceries Online", [3, 4, 9]],
+  ["Gym", range(1, 5)], ["HOA Invoice", [1, 4, 7, 10]], ["HOA Payment", [1, 4, 7]], ["Home Meter", [7, 8, 9, 10], { 8: 2, 10: 2 }],
+  ["Insurance Car", [1, 4, 7, 10]], ["Insurance Health", range(1, 10)], ["Insurance Life", [1, 7]], ["Internet Invoice", range(3, 10)],
+  ["Internet Payment", range(3, 10)], ["Internet Receipt", range(3, 9)],
+];
+const R_GYM = 4, R_HOME = 7, R_INS = 8;
+const READINGS = [ // the Meter readings table: file, taken, (taken after the payment date), kind, kWh, tokens, cost
+  ["202607 Home Meter #1 Before.jpg", "4 Jul, 19:12", null, "Balance", "58.10", 2590, 140, "$0.00033"],
+  ["202607 Home Meter #1 Input.jpg", "4 Jul, 19:13", null, "Top-up", "250.00", 2627, 153, "$0.00034"],
+  ["202607 Home Meter #1 After.jpg", "4 Jul, 19:14", null, "Balance", "308.10", 2604, 142, "$0.00033"],
+  ["202608 Home Meter #1 Before.jpg", "6 Aug, 19:05", null, "Balance", "64.20", 2641, 155, "$0.00034"],
+  ["202608 Home Meter #1 Input.jpg", "6 Aug, 19:06", null, "Top-up", "250.00", 2618, 144, "$0.00033"],
+  ["202608 Home Meter #1 After.jpg", "6 Aug, 19:07", null, "Balance", "314.20", 2595, 157, "$0.00034"],
+  ["202609 Home Meter #1 Before.jpg", "15 Sept", "12 Sept, 18:39", "Balance", "7864.00", 2632, 146, "$0.00034"],
+  ["202609 Home Meter #1 Input.jpg", "15 Sept", "12 Sept, 18:41", "Top-up", "250.00", 2609, 159, "$0.00034"],
+  ["202609 Home Meter #1 After.jpg", "15 Sept", "12 Sept, 18:42", "Balance", "328.64", 2646, 148, "$0.00034"],
+  ["202610 Home Meter #1 Before.jpg", "14 Oct, 18:42", null, "Balance", "72.52", 2623, 161, "$0.00034"],
+  ["202610 Home Meter #1 Input.jpg", "14 Oct, 18:43", null, "Top-up", "250.00", 2600, 150, "$0.00034"],
+  ["202610 Home Meter #1 After.jpg", "14 Oct, 18:44", null, "Balance", "322.52", 2637, 163, "$0.00035"],
+  ["202610 Home Meter #2 Before.jpg", "29 Oct, 07:58", null, "Balance", "2.02", 2614, 152, "$0.00034"],
+];
+const R_SEP = 6, R_OCT = 9, R_GLARE = 12;
+
+// ══ Build ════════════════════════════════════════════════════════════════════
+/** A rectangle that morphs (position, size, radius) with its content kept in world coordinates. */
+function morph(cls = "", style = {}) {
+  const outer = h("div", { class: "abs " + cls, style: { overflow: "hidden", ...style } });
+  const inner = h("div", { class: "abs", style: { left: "0", top: "0", width: "1280px", height: "1040px" } });
+  outer.append(inner);
+  return {
+    outer, inner,
+    set(r) { // [x, y, w, h, radius]
+      const [x, y, w, hh, rad] = r;
+      outer.style.left = x + "px"; outer.style.top = y + "px";
+      outer.style.width = Math.max(0, w) + "px"; outer.style.height = Math.max(0, hh) + "px";
+      outer.style.borderRadius = rad + "px";
+      inner.style.transform = `translate(${-x}px, ${-y}px)`;
+    },
+  };
+}
+
+// ── File chips around the app icon ──
+const CHIPS = [
+  ["202601 Rent.pdf", -1, -1], ["202603 Internet Payment.jpg", 1, -1],
+  ["202601 Property Tax 1 Assessment.pdf", -1, 0], ["202611 Salary.png", 1, 0],
+  ["202610 Home Meter #1 Before.jpg", -1, 1], ["202609 Home Meter #1 Payment.jpg", 1, 1],
+];
+const chipEls = CHIPS.map(([name]) => { const e = h("div", { class: "filechip" }, name); world.append(e); return e; });
+
+// ── The shape: the app icon, the window, the file name, the PDF page ──
+const shape = morph("", { background: "#fff", border: "1px solid var(--border)", boxShadow: "0 1px 2px rgba(9,9,11,.04), 0 18px 50px rgba(9,9,11,.08)" });
+world.append(shape.outer);
+const S_IN = shape.inner;
+
+// The app icon (scripts/icon.mjs), on the shape's 824 px rounded square
+const iconArt = H(`<svg class="abs" viewBox="100 100 824 824" style="left:552px;top:432px;width:176px;height:176px">
+  <defs><linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#27272a"/><stop offset="1" stop-color="#09090b"/></linearGradient></defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#ig)"/>
+  <path d="M300 270 Q300 230 340 230 L684 230 Q724 230 724 270 L724 750 ${range(0, 7).map((k) => { const i = 8 - k, tw = 53; return `L${300 + (i - 0.5) * tw} 722 L${300 + (i - 1) * tw} 750`; }).join(" ")} Z" fill="#fafafa"/>
+  ${[[0.62, 0.22], [0.45, 0.32], [0.55, 0.22], [0.38, 0.3]].map(([a, b], i) => `<rect x="356" y="${322 + i * 78}" width="${424 * a}" height="26" rx="13" fill="#d4d4d8"/><rect x="${724 - 56 - 424 * b * 0.6}" y="${322 + i * 78}" width="${424 * b * 0.6}" height="26" rx="13" fill="#a1a1aa"/>`).join("")}
+  <circle cx="708" cy="716" r="150" fill="#09090b"/><circle cx="708" cy="716" r="128" fill="#16a34a"/>
+  <path d="M650 718 L690 758 L770 676" fill="none" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`);
+S_IN.append(iconArt);
+
+// ── The window (src/window.html) at 1280 × 1040 ──
+const win = h("div", { class: "abs app", style: { left: "0", top: "0", width: "1280px", height: "1040px", background: "var(--bg)" } });
+S_IN.append(win);
+win.append(H(`<div class="abs" style="left:28px;top:24px"><h1>Personal File Map</h1><div class="sub">/Users/demo/Bills/config.local.json</div></div>`));
+const headActions = H(`<div class="abs" style="right:28px;top:24px;display:flex;gap:8px;align-items:center">
+  <span class="chip stack" id="chip" style="padding:0 9px;justify-items:center"><span id="chipA">New: not saved yet</span><span id="chipB">config.local.json</span></span>
+  <span class="btn" id="btnBills">${ICON.calendar}Bills <span class="count stack" style="min-width:16px"><span id="billsN0"></span><span id="billsN1">24</span></span></span>
+  <span class="btn" id="btnFolder">${ICON.folder}Folder &amp; meters</span>
+</div>`);
+win.append(headActions);
+const startCard = H(`<section class="card abs" style="left:28px;top:97px;width:1224px">
+  <div class="card-head"><h2>Get started</h2></div>
+  <p class="help" style="margin-bottom:12px">Your bills and when each is due are under <strong>Bills</strong>. Where the files are, and the electricity meter photos and AI reader, are under <strong>Folder &amp; meters</strong>. Turn on ⚡ for a meter's bill and its photo readings show here.</p>
+  <div style="display:flex;gap:8px"><span class="btn">Open bills</span><span class="btn ghost">Folder &amp; meters</span></div>
+</section>`);
+win.append(startCard);
+
+// Meter readings card
+const readCard = H(`<section class="card abs" style="left:28px;top:97px;width:1224px;padding-bottom:12px">
+  <div class="card-head"><h2>Meter readings</h2><span class="btn stack" id="readBtn" style="padding:0 14px"><span id="rb0">Read 18 new photos</span><span id="rb1"><span class="spinner"></span>Reading 18 photos…</span><span id="rb2">Read new photos</span></span></div>
+  <p class="help">The kWh on each meter photo, oldest first. Times come from the photos' capture dates, or for photos without one, from the top-up's Payment file. Fix a misread value or type here: it's saved to <code>personal-file-map.readings.json</code> in the bills folder right away and never read again. Usage is worked out from these when you generate the report.</p>
+  <div class="meter-head"><h3>Home Meter</h3>
+    <div class="meter-stats stack" style="justify-items:end;display:grid">
+      <div id="ms0">Usage shows once there are two top-ups with before and after photos.</div>
+      <div id="ms1"><strong>1,105 kWh</strong> used over 4 top-ups · <strong>9.5 kWh</strong> a day (over 117 days) · 2.0 kWh left on 29 Oct, next top-up around 29 Oct<br><strong>USD 169.40</strong> spent on 5 top-ups this year<br>AI: 18 photos · 47,121 in · 2,709 out · 0 cache · ≈ $0.0061</div>
+      <div id="ms2"><strong>785 kWh</strong> used over 4 top-ups · <strong>7.7 kWh</strong> a day (over 102 days) · 322.5 kWh left on 14 Oct, next top-up around 16 Nov<br><strong>USD 169.40</strong> spent on 5 top-ups this year<br>AI: 18 photos · 47,121 in · 2,709 out · 0 cache · ≈ $0.0061</div>
+    </div>
+  </div>
+  <div class="readings-wrap"><table class="readings"><thead><tr><th>Taken</th><th>File</th><th>Shows</th><th>kWh</th><th>Read by</th><th class="num">Tokens in/out/cache<small>USD</small></th></tr></thead><tbody id="rtb"></tbody></table></div>
+  <div class="stack"><div class="date-notes" id="dn0"><span class="est"><span class="mark">†</span>No capture date in the photo and the file's date is in another month, so only the month is known: usage between top-ups is still exact, but days and kWh a day can't be measured around it.</span></div>
+  <div class="date-notes" id="dn1"><span class="mark">‡</span>No capture date in the photo, so the date and time on the top-up's Payment file is used: the top-up is the same day as the payment.</div></div>
+  <div class="problems" id="prob">Top-up Sep: 7864.00 + 250.00 isn't 328.64: check these photos</div>
+</section>`);
+win.append(readCard);
+const rtb = readCard.querySelector("#rtb");
+const rrows = READINGS.map((r, i) => {
+  const [file, taken, taken2, kind, kwh, tin, tout, cost] = r;
+  const tr = H(`<tr>
+    <td class="when"><span class="stack"><span class="${taken2 ? "est" : ""}">${taken}${taken2 ? "<sup>†</sup>" : ""}</span>${taken2 ? `<span>${taken2}<sup>‡</sup></span>` : ""}</span></td>
+    <td class="file">${file}</td>
+    <td><span class="stack"><span class="sel" style="color:var(--faint)">Not read</span><span class="sel">${kind}</span>${i === R_GLARE ? '<span class="sel">Ignore</span>' : ""}</span></td>
+    <td><span class="stack"><span class="inp"><span class="ph">kWh</span></span><span class="inp">${kwh}</span>${i === R_SEP ? '<span class="inp" style="border-color:var(--ring);box-shadow:0 0 0 2px #e4e4e7"><span class="typed"></span></span>' : ""}${i === R_GLARE ? '<span class="inp" style="opacity:.55"><span class="ph">kWh</span></span>' : ""}</span></td>
+    <td class="by"><span class="stack"><span></span>${i === R_SEP ? '<span class="warn">claude-haiku-5-5<small>medium confidence</small></span><span>you</span>' : i === R_GLARE ? '<span class="warn">claude-haiku-5-5<small>low confidence · Glare covers part of the display.</small></span><span>you<small>Glare covers part of the display.</small></span>' : "<span>claude-haiku-5-5</span>"}</span></td>
+    <td class="ai"><span class="stack" style="justify-items:end"><span></span><span><span class="tok">${fmtInt(tin)} / ${tout} / 0</span><small>${cost}</small></span></span></td>
+  </tr>`);
+  rtb.append(tr);
+  const q = (sel) => [...tr.querySelectorAll(sel)];
+  return { tr, taken: q("td.when .stack > *"), shows: q("td:nth-child(3) .stack > *"), kwh: q("td:nth-child(4) .stack > *"), by: q("td.by .stack > *"), ai: q("td.ai .stack > *"), tok: tr.querySelector(".tok"), typed: tr.querySelector(".typed"), file: tr.querySelector("td.file") };
+});
+
+// Footer
+const footer = H(`<div class="footer"><div class="abs" style="left:28px;top:14px;display:grid;gap:3px">
+  <div class="stack status" style="height:19px">
+    <div id="st0">Nothing is saved yet. <strong>Save</strong> writes these settings to config.local.json; <strong>Generate report</strong> also creates the PDF.</div>
+    <div id="st1"><strong>Unsaved changes. </strong>Click Save, or Generate report to save and update the PDF.</div>
+    <div id="st2" class="status ok"><strong>Saved to config.local.json. </strong>The PDF isn't updated until you generate the report.</div>
+    <div id="st3"><span class="spinner"></span>Reading new meter photos and generating the report…</div>
+    <div id="st4" class="status ok"><strong>Report saved. </strong>24 bills · 178 files · 11 due this month · 4 missing</div>
+  </div>
+  <div class="footer-links">v0.0.2 &nbsp;·&nbsp; <span>GitHub</span> &nbsp;·&nbsp; <span>Report an issue</span> &nbsp;·&nbsp; <span>FAQ</span></div></div>
+  <div class="abs" style="right:28px;top:17px;display:flex;gap:8px">
+    <span class="btn" id="openPdf">Open PDF</span><span class="btn" id="reveal">Show in Finder</span><span class="btn" id="saveBtn">Save</span><span class="btn primary" id="genBtn">Generate report</span>
+  </div></div>`);
+win.append(footer);
+
+// Skeleton of the window while it loads
+const skel = H(`<div class="abs" style="left:0;top:0;width:1280px;height:1040px;background:var(--bg)">
+  <div class="abs sk" style="left:28px;top:30px;width:230px;height:22px"></div>
+  <div class="abs sk" style="left:28px;top:63px;width:420px;height:12px"></div>
+  <div class="abs sk" style="left:862px;top:31px;width:100px;height:20px;border-radius:10px"></div>
+  <div class="abs sk" style="left:985px;top:24px;width:100px;height:34px;border-radius:8px"></div>
+  <div class="abs sk" style="left:1095px;top:24px;width:157px;height:34px;border-radius:8px"></div>
+  <div class="abs card" style="left:28px;top:97px;width:1224px;height:150px"><div class="sk" style="width:120px;height:16px"></div><div class="sk" style="width:80%;height:12px;margin-top:18px"></div><div class="sk" style="width:60%;height:12px;margin-top:10px"></div><div class="sk" style="width:200px;height:34px;margin-top:16px;border-radius:8px"></div></div>
+  <div class="footer"><div class="abs status" style="left:28px;top:14px">Loading…</div><div class="abs sk" style="right:28px;top:17px;width:136px;height:34px;border-radius:8px"></div></div>
+</div>`);
+S_IN.append(skel);
+
+// ── Folder & meters sheet ──
+const dim = h("div", { class: "abs", style: { left: "0", top: "0", width: "1280px", height: "1040px", background: "rgba(9,9,11,.45)" } });
+win.append(dim);
+const sheet = H(`<div class="abs app" style="left:820px;top:0;width:460px;height:1040px;background:var(--bg);border-left:1px solid var(--border);box-shadow:-24px 0 64px rgba(0,0,0,.18);overflow:hidden">
+  <div class="abs" style="left:20px;right:16px;top:16px;display:flex;justify-content:space-between;align-items:center"><h2 style="font-size:17px">Folder &amp; meters</h2><span class="btn ghost icon" id="sheetX">✕</span></div>
+  <div class="abs" id="sheetBody" style="left:16px;right:16px;top:58px">
+    <section class="card" id="folderCard" style="margin-bottom:16px">
+      <div class="card-head"><h2>Bills folder</h2></div>
+      <p class="help">Where your <code>YYYYMM Name.ext</code> files are. <code>./</code> is the app's own folder; a relative path, an absolute path or <code>~/…</code> also work. The PDF is saved into this folder.</p>
+      <div style="display:flex;gap:8px"><div class="inp stack" id="folderInp" style="flex:1;font:13px/32px var(--mono)"><span id="fi0">./</span><span id="fi1">./2026</span></div><span class="btn" id="browseBtn">Browse…</span></div>
+      <div style="margin-top:10px;font-size:13px;color:var(--muted)" class="stack">
+        <div id="fo0" style="display:grid;gap:4px"><div style="color:var(--fg2)">/Users/demo/Bills</div><div>2026 · 0 files · 0 bills</div></div>
+        <div id="fo1" style="display:grid;gap:4px"><div style="color:var(--fg2)">${DIR}</div><div>2026 · <span id="nFiles">178</span> files · <span id="nBills">24</span> bills · 3 skipped (listed under Housekeeping)</div></div>
+      </div>
+    </section>
+    <section class="card" id="metersCard">
+      <div class="card-head"><h2>Electricity meters</h2><span class="ai-badge">${ICON.sparkle}AI</span></div>
+      <p class="help">Reads the kWh on photos of a prepaid electricity meter, so the report shows how much you use. Turn on <span class="zap-inline">${ICON.zap}</span> next to the meter's bill (e.g. <code>Home Meter</code>) to mark its photos.</p>
+      <div class="note">Name the photos of each top-up like this. Photos named <strong>Before</strong>, <strong>Input</strong> or <strong>After</strong> are read. A <strong>Payment</strong> is always read, for what you paid (and the date, when the photos have none). A <strong>Payment Receipt</strong> is read when it's needed: for the kWh bought when there's no Input photo, or for what you paid when there's no Payment. Other files of the meter's bill are left out.</div>
+      <ul class="examples" id="examples">
+        <li><code>202611 Home Meter #1 Before.jpg</code>the credit left, just before topping up</li>
+        <li><code>202611 Home Meter #1 Input.jpg</code>the kWh just added: the meter's screen after entering the token, or the receipt</li>
+        <li><code>202611 Home Meter #1 After.jpg</code>the credit right after topping up</li>
+        <li><code>202611 Home Meter #1 Payment.jpg</code>optional: the bank transfer; read for its date only when the photos have none, or there are no photos</li>
+        <li><code>202611 Home Meter #1 Payment Receipt.jpg</code>optional: the token receipt; read for the kWh bought only when there's no Input photo</li>
+      </ul>
+      <p class="help">The month (<code>YYYYMM</code>), the meter's name, <code>#1</code> for the first top-up that month (<code>#2</code> for a second one), then <code>Before</code>, <code>Input</code> or <code>After</code>. Use the original photos, not screenshots of them: the time each photo was taken is read from the file.</p>
+      <div class="field"><label>AI reader</label><div class="sel stack" id="readerSel"><span id="rs0">Off: don't send any photos</span><span id="rs1">Claude (Anthropic)</span></div></div>
+      <div id="readerFields" style="overflow:hidden">
+        <div class="field"><label>Model</label><div class="inp"><span class="ph">claude-haiku-5-5</span></div><div class="note">claude-haiku-5-5: cheapest, recommended.</div></div>
+        <div class="field"><label>API key</label>
+          <div style="display:flex;gap:8px"><div class="inp stack" id="keyInp" style="flex:1"><span id="k0" class="ph">sk-ant-…</span><span id="k1" style="letter-spacing:1px"></span><span id="k2" class="ph">•••• 7f3a</span></div><span class="btn" id="keySave">Save</span></div>
+          <div class="note stack"><span id="kn0">Not set. <span class="linkish">Create a key</span> in your account, paste it here and click Save.</span><span id="kn1">Key ending in 7f3a is used now. Click Save (or Generate report) to keep it in config.local.json. <span class="linkish">Remove</span></span><span id="kn2">In config.local.json, ending in 7f3a. <span class="linkish">Remove</span></span></div>
+        </div>
+      </div>
+      <p class="note stack" style="margin:0"><span id="rn0">Nothing leaves this computer. Readings already saved, and values you type in, are still used in the report.</span><span id="rn1">Only the Before, Input and After photos of ⚡ bills (and a top-up's Payment or Payment Receipt file, only when the photos don't give its date or kWh) are sent to Anthropic, scaled down, once each.</span></p>
+    </section>
+  </div>
+</div>`);
+win.append(sheet);
+const sheetBody = sheet.querySelector("#sheetBody");
+const readerFields = sheet.querySelector("#readerFields");
+
+// ── Bills dialog ──
+const billsDim = h("div", { class: "abs", style: { left: "0", top: "0", width: "1280px", height: "1040px", background: "rgba(9,9,11,.45)" } });
+win.append(billsDim);
+const bills = H(`<div class="abs app" style="left:50px;top:32px;width:1180px;height:976px;border:1px solid var(--border);border-radius:14px;background:var(--bg);box-shadow:0 24px 64px rgba(0,0,0,.2);overflow:hidden">
+  <div class="abs" style="left:20px;right:20px;top:16px;display:flex;justify-content:space-between;align-items:center"><h2 style="font-size:20px">Bills</h2><span class="btn">Done</span></div>
+  <section class="card abs" style="left:20px;right:20px;top:66px;bottom:20px;overflow:hidden">
+    <div class="card-head"><h2>Bills and when they're due <span class="note">· 24</span></h2><div style="display:flex;gap:8px;align-items:center"><span class="btn ghost" id="schedBtn">What the schedules mean</span><div class="inp" style="width:200px"><span class="ph">Filter bills</span></div></div></div>
+    <p class="help">A bill's name ends at a number: <code>#1</code>, <code>#2</code> mark separate payments or top-ups in a month (<code>Home Meter #1 Before</code>, <code>Home Meter #2 After</code>: 2 that month, the small number on the month), and a plain number is a document of the same payment (<code>Property Tax 1 Assessment</code>, <code>Property Tax 3 Receipt</code>: one bill, one payment). A name also covers every bill that starts with it; when several names match, the longest wins; case doesn't matter. A scheduled past month without a file is <em>missing</em>, the current month is <em>due</em>.</p>
+    <div class="legend"><span><i style="background:var(--on)"></i>expected</span><span><i style="background:var(--dot);border-radius:50%;width:6px;height:6px;vertical-align:1px"></i>file found</span><span><span class="badge">New</span> not in config.local.json yet, added as monthly like before</span></div>
+    <div id="rowsBox" style="position:relative;height:800px;border-top:1px solid var(--border)"></div>
+  </section>
+</div>`);
+win.append(bills);
+const rowsBox = bills.querySelector("#rowsBox");
+const rowEls = ROWS.map(([name, files, n = {}], i) => {
+  const months = MON.map((m, j) => `<div class="m"><span class="mb abs" style="inset:0;border-radius:6px"></span><span class="ml" style="position:relative">${m[0]}</span>${files.includes(j + 1) ? '<span class="dot"></span>' : ""}${n[j + 1] ? `<span class="n">${n[j + 1]}</span>` : ""}</div>`).join("");
+  const sel = i === R_INS ? '<span class="stack sel"><span>Monthly</span><span>Quarterly</span></span>'
+    : i === R_GYM ? '<span class="stack sel"><span>Monthly</span><span>Every N months</span></span>' : '<span class="sel">Monthly</span>';
+  const detail = i === R_GYM ? `<div class="row-detail">every <span class="sel stack" id="gEvery"><span>2</span><span>1</span></span><span class="stack" id="gWord" style="width:92px"><span>months, from</span><span>month, from</span></span><span class="sel">Jan</span>until <span class="sel stack" id="gUntil"><span>Dec</span><span>May</span></span></div>` : "";
+  const el = H(`<div class="row" style="height:55px"><div class="row-main">
+    <div class="name-cell"><div class="inp">${name}</div><span class="zap"><span class="zbg abs" style="inset:0;border-radius:8px"></span><span class="zi" style="position:relative;display:grid">${ICON.zap}</span></span><span class="badge">New</span></div>
+    ${sel}<div class="months">${months}</div><div class="coverage">${files.length} month${files.length === 1 ? "" : "s"} with files</div><span class="btn ghost icon" style="height:32px">✕</span>
+  </div>${detail}</div>`);
+  rowsBox.append(el);
+  return { el, name, mb: [...el.querySelectorAll(".mb")], ml: [...el.querySelectorAll(".ml")], sel: [...el.querySelectorAll(".row-main > .stack.sel > span")], zap: el.querySelector(".zap"), detail: el.querySelector(".row-detail") };
+});
+
+// ── What the schedules mean ──
+const SCHED = [
+  ["Monthly", range(1, 12), true, "Every month. For rent, utilities, subscriptions."],
+  ["Quarterly", [1, 4, 7, 10], true, "Jan, Apr, Jul and Oct only."],
+  ["Every N months", [3, 5, 7, 9, 11], true, "Every N months from a start month, optionally until an end month. Shown: every 2 from Mar. Every 1 until May = a subscription cancelled in May."],
+  ["Specific months", [1, 7], true, "Exactly the months you pick, e.g. a yearly tax in Jan or insurance in Jan and Jul."],
+  ["Irregular", [], false, "Comes some months, not on a schedule. Months with a file get a checkmark; empty months are never due or missing."],
+  ["Not scheduled", [], false, "No schedule set yet. Shown as “Not scheduled” in the report and never flagged."],
+];
+const schedM = morph("app", { background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,.25)" });
+win.append(schedM.outer);
+const schedDim = h("div", { class: "abs", style: { left: "0", top: "0", width: "1280px", height: "1040px", background: "rgba(9,9,11,.45)" } });
+win.insertBefore(schedDim, schedM.outer);
+const schedBody = H(`<div class="abs" style="left:180px;top:256px;width:920px;height:527px">
+  <div class="abs" style="left:20px;top:18px;right:20px"><h2 style="font-size:17px">What the schedules mean</h2><p class="help" style="margin:2px 0 0">Each schedule side by side: an example of its months, whether empty months are flagged, and when to use it.</p><span class="btn ghost icon abs" id="schedX" style="right:-8px;top:6px">✕</span></div>
+  <div class="abs" style="left:20px;right:20px;top:76px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+    ${SCHED.map(([name, ms, flag, text]) => `<div class="schedule" style="height:196px"><div class="schedule-head"><strong>${name}</strong><span class="flag ${flag ? "yes" : "no"}">${flag ? "Flagged" : "Never flagged"}</span></div><div class="months">${MON.map((m, j) => `<div class="m" style="background:${ms.includes(j + 1) ? "var(--on)" : "var(--off)"};color:${ms.includes(j + 1) ? "#fff" : "var(--faint)"}">${m[0]}</div>`).join("")}</div>${text}</div>`).join("")}
+  </div>
+  <p class="note abs" style="left:20px;right:20px;top:484px;margin:0">Flagged schedules mark a past month without a file as <strong>missing</strong> and the current month as <strong>due</strong>. Months before “from” or after “until” are never expected.</p>
+</div>`);
+schedM.inner.append(schedBody);
+const schedCards = [...schedBody.querySelectorAll(".schedule")];
+
+// ── The meter row growing into the Electricity meters card ──
+const proxy = morph("", { background: "var(--card)", border: "1px solid var(--border)" });
+win.append(proxy.outer);
+
+// ── Photo viewer ──
+function meterPhotoSVG(id) {
+  // A generic prepaid meter, photographed at a slight angle (the photo's content, not the app's UI)
+  return `<svg viewBox="0 0 400 300" width="100%" height="100%" preserveAspectRatio="xMidYMid slice">
+    <rect width="400" height="300" fill="#cfc9c1"/><rect y="230" width="400" height="70" fill="#bdb6ad"/>
+    <g transform="rotate(-3 200 150)">
+      <rect x="92" y="28" width="216" height="252" rx="16" fill="#efeee9"/><rect x="92" y="28" width="216" height="252" rx="16" fill="none" stroke="#b9b5ad" stroke-width="2"/>
+      <rect x="112" y="50" width="176" height="74" rx="6" fill="#2c2f2b"/>
+      <rect x="120" y="58" width="160" height="58" rx="3" fill="#b9c6a3"/>
+      <g id="${id}" transform="translate(128 64)"></g>
+      <text x="270" y="112" font-family="Inter" font-size="8" font-weight="600" fill="#3c4532" text-anchor="end">kWh</text>
+      ${range(0, 11).map((k) => `<rect x="${126 + (k % 3) * 52}" y="${142 + Math.floor(k / 3) * 30}" width="44" height="22" rx="5" fill="#d9d7d0"/>`).join("")}
+      <circle cx="292" cy="262" r="3" fill="#c0392b" opacity=".7"/>
+    </g>
+    <rect width="400" height="300" fill="url(#gl${id})" opacity=".0"/>
+  </svg>`;
+}
+/** A 7-segment display: 5 digits (3 + 2 decimals), one polygon per segment. */
+const SEG = { a: [[3, 0], [29, 0], [25, 5], [7, 5]], b: [[30, 1], [30, 22], [26, 19], [26, 5]], c: [[30, 25], [30, 46], [26, 42], [26, 28]], d: [[3, 47], [29, 47], [25, 42], [7, 42]], e: [[2, 25], [6, 28], [6, 42], [2, 46]], f: [[2, 1], [6, 5], [6, 19], [2, 22]], g: [[4, 23.5], [8, 21], [24, 21], [28, 23.5], [24, 26], [8, 26]] };
+const DIG = ["abcdef", "bc", "abdeg", "abcdg", "bcfg", "acdfg", "acdefg", "abc", "abcdefg", "abcdfg"];
+function buildLCD(g) {
+  const cells = [];
+  for (let c = 0; c < 5; c++) {
+    const segs = {};
+    for (const [s, pts] of Object.entries(SEG)) {
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      p.setAttribute("points", pts.map(([x, y]) => `${x * 0.86 + c * 29 + (c >= 3 ? 6 : 0)},${y * 0.98}`).join(" "));
+      g.append(p);
+      segs[s] = p;
+    }
+    cells.push(segs);
+  }
+  const dp = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  dp.setAttribute("cx", 3 * 29 + 1); dp.setAttribute("cy", 45); dp.setAttribute("r", 2.6); g.append(dp);
+  return { cells, dp };
+}
+function setLCD(lcd, text, t, tr) { // text "072.52"; scrambles until tr, then locks digit by digit
+  const digits = text.replace(".", "").padStart(5, " ");
+  lcd.cells.forEach((segs, c) => {
+    const locked = t >= tr + c * 0.045;
+    let d = digits[c];
+    if (!locked) d = String(Math.floor(hash(Math.floor(t * 24), c + 1) * 10));
+    const lead = locked && d === " ";
+    for (const s of Object.keys(SEG)) segs[s].setAttribute("fill", !lead && d !== " " && DIG[+d].includes(s) ? "#1f2a17" : "rgba(31,42,23,.07)");
+  });
+  lcd.dp.setAttribute("fill", "#1f2a17");
+}
+const photoM = morph("app", { background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,.25)" });
+const photoDim = h("div", { class: "abs", style: { left: "0", top: "0", width: "1280px", height: "1040px", background: "rgba(9,9,11,.45)" } });
+win.append(photoDim, photoM.outer);
+const photoBody = H(`<div class="abs" style="left:90px;top:60px;width:1100px;height:920px">
+  <div class="abs" style="left:20px;top:18px;right:60px"><h2 style="font-size:17px">202609 Home Meter #1 Before.jpg</h2><p class="help" style="margin:2px 0 0">Home Meter · Before · Taken about 15 Sept (no capture date) · 7864.00 kWh balance · read by claude-haiku-5-5</p></div>
+  <span class="btn ghost icon abs" id="photoX" style="right:12px;top:14px">✕</span>
+  <div class="photo-view abs" style="left:20px;right:20px;top:84px;bottom:20px">${meterPhotoSVG("lcdBig")}</div>
+</div>`);
+photoM.inner.append(photoBody);
+const lcdBig = buildLCD(photoBody.querySelector("#lcdBig"));
+photoBody.querySelector("#lcdBig").setAttribute("transform", "translate(128 64) scale(1)");
+
+// ── Photo tiles read by the AI (bar 9) ──
+const TILES = [["202610 Home Meter #1 Before.jpg", "072.52"], ["202610 Home Meter #1 Input.jpg", "250.00"], ["202610 Home Meter #1 After.jpg", "322.52"]];
+const tiles = TILES.map(([file], i) => {
+  const e = H(`<div class="abs" style="width:300px;padding:8px 8px 10px;background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:0 14px 40px rgba(9,9,11,.14)"><div style="height:213px;border-radius:10px;overflow:hidden">${meterPhotoSVG("lcdT" + i)}</div><div style="margin-top:9px;font:500 12px var(--mono);color:var(--fg2);text-align:center;white-space:nowrap">${file}</div></div>`);
+  world.append(e);
+  return { e, lcd: buildLCD(e.querySelector("#lcdT" + i)) };
+});
+
+// ── The September top-up's Payment screenshot (bar 11) ──
+const payShot = H(`<div class="abs" style="width:300px">
+  <div style="height:560px;border-radius:26px;overflow:hidden;border:1px solid var(--border);background:#fff;font-family:Inter;position:relative">
+    <div style="height:64px;background:#18181b;color:#fafafa;font:600 14px/64px Inter;padding:0 20px">Transfer</div>
+    <div style="margin:38px auto 0;width:64px;height:64px;border-radius:50%;background:#16a34a;display:grid;place-items:center"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+    <div style="text-align:center;margin-top:16px;font:600 17px Inter;color:#18181b">Transfer successful</div>
+    <div style="text-align:center;margin-top:6px;font:700 30px Inter;color:#09090b;letter-spacing:-.02em">USD 38.50</div>
+    <div style="margin:26px 22px 0;display:grid;gap:12px;font-size:13px">
+      <div style="display:flex;justify-content:space-between"><span style="color:#71717a">Date</span><span id="payDate" style="font-weight:600;color:#18181b">12 Sep 2026 18:40</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:#71717a">To</span><span>Electricity token</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:#71717a">From</span><span>•••• 4821</span></div>
+      <div style="display:flex;justify-content:space-between"><span style="color:#71717a">Reference</span><span>2609 1840 0001</span></div>
+    </div>
+  </div>
+  <div style="margin:10px auto 0;width:max-content;font:500 13px var(--mono);color:var(--fg2);background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 10px">202609 Home Meter #1 Payment.jpg</div>
+</div>`);
+world.append(payShot);
+const flyDate = H(`<div class="abs" style="font:600 15px Inter;color:#18181b;background:#fff;border:1px solid var(--border);border-radius:8px;padding:6px 10px;white-space:nowrap;box-shadow:0 6px 20px rgba(9,9,11,.12)">12 Sep 2026 18:40</div>`);
+world.append(flyDate);
+
+// ── The file-name anatomy (bar 3), inside the shape ──
+const anat = h("div", { class: "abs", style: { left: "0", top: "0", width: "1280px", height: "1040px" } });
+S_IN.append(anat);
+const SEGS = [["202610", "YYYYMM"], ["Home Meter", "Name"], ["#2", "#N"], ["Before", "label"], [".jpg", ""]];
+const segEls = SEGS.map(([s, label]) => {
+  const e = h("div", { class: "abs", style: { font: "500 44px/1 var(--mono)", color: "#09090b", whiteSpace: "pre", top: "0", left: "0" } }, s);
+  const l = h("div", { class: "lbl" }, label);
+  anat.append(e, l);
+  return { e, l };
+});
+const anatRows = [
+  H(`<div class="abs" style="left:150px;top:520px;width:980px;display:flex;align-items:center;justify-content:space-between">
+    <div style="font:500 30px var(--mono);color:#09090b">Property Tax <span id="hl1" style="border-radius:6px;padding:0 6px">1</span> Assessment</div>
+    <div style="font:500 20px Inter;color:var(--muted)">one bill, one payment</div></div>`),
+  H(`<div class="abs" style="left:150px;top:610px;width:980px;display:flex;align-items:center;justify-content:space-between">
+    <div style="font:500 30px var(--mono);color:#09090b;display:grid;gap:10px"><span>Home Meter <span class="hl2" style="border-radius:6px;padding:0 6px">#1</span> Before</span><span>Home Meter <span class="hl2" style="border-radius:6px;padding:0 6px">#2</span> After</span></div>
+    <div style="display:flex;align-items:center;gap:16px;font:500 20px Inter;color:var(--muted)"><div class="m" style="transform:scale(1.5);background:var(--on);color:#fff">O<span class="dot"></span><span class="n">2</span></div>2 that month</div></div>`),
+];
+anatRows.forEach((e) => anat.append(e));
+
+// ── The PDF report, A4 landscape: 842 × 595 pt drawn at 1286 × 909 (the page PNGs), scaled onto the shape ──
+const PG = { x: 0, y: 67.5, s: 1280 / 1286 };
+const pageWrap = h("div", { class: "abs pdf", style: { left: "0", top: "0", width: "1286px", height: "909px", transformOrigin: "0 0", transform: `translate(${PG.x}px, ${PG.y}px) scale(${PG.s})` } });
+S_IN.append(pageWrap);
+const P = (x, y) => [PG.x + x * PG.s, PG.y + y * PG.s];
+const T_ = (x, y, s, txt, st = "") => `<div class="t" style="left:${x}px;top:${y}px;font-size:${s}px;${st}">${txt}</div>`;
+const card = (x, y, w, hh, inner = "") => `<div class="pcard" style="left:${x}px;top:${y}px;width:${w}px;height:${hh}px">${inner}</div>`;
+const pill = (x, y, txt, fg, bg, w, hh = 26, fs = 13) => `<div class="pill" style="left:${x}px;top:${y}px;width:${w}px;height:${hh}px;line-height:${hh}px;font-size:${fs}px;color:${fg};background:${bg}">${txt}</div>`;
+const footerP = (n) => T_(49, 872, 11, `<b style="color:#71717a;font-weight:600">Source</b>&nbsp;&nbsp;<span style="color:#a1a1aa">${DIR}</span>`) + T_(1183, 872, 11, `Page ${n} of 6`, "color:#a1a1aa");
+const UP = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">';
+
+// Page 1: overview
+const BARS = [14, 11, 17, 20, 17, 14, 20, 15, 16, 15, 3, 0];
+const page1 = H(`<div class="abs" style="inset:0;background:#fff">
+  ${T_(49, 47, 12, "PERSONAL FILE MAP", "letter-spacing:.14em;font-weight:600;color:#71717a")}
+  ${T_(48, 64, 39, "November 2026", "font-weight:700;letter-spacing:-.02em")}
+  ${T_(49, 117, 13.5, "24 bills &nbsp;·&nbsp; 20 scheduled &nbsp;·&nbsp; 3 irregular &nbsp;·&nbsp; 1 not scheduled &nbsp;·&nbsp; 178 files", "color:#71717a")}
+  ${T_(1035, 47, 12, "Generated Tue, 10 Nov 2026 at 12:00", "color:#71717a")}
+  <div class="p1kpi">${pill(1058, 72, "11 due in Nov", "#b45309", "#fef3c7", 95)}${pill(1162, 72, "4 missing", "#be123c", "#ffe4e6", 76)}</div>
+  <div class="p1kpi">${card(49, 156, 283, 125, T_(21, 16, 13, "Paid in November", "color:#3f3f46") + T_(21, 44, 34, '3 <span style="font-size:19px;color:#a1a1aa;font-weight:500">/ 14</span>', "font-weight:600") + `<div class="abs" style="left:21px;top:86px;width:240px;height:7px;border-radius:4px;background:#f4f4f5"><div id="paidBar" style="height:7px;border-radius:4px;background:#16a34a;width:21%"></div></div>` + T_(21, 100, 11.5, "11 still due this month", "color:#71717a"))}</div>
+  <div class="p1kpi">${card(351, 156, 283, 125, T_(20, 16, 13, "Missing files", "color:#3f3f46") + T_(20, 44, 34, "4", "font-weight:600;color:#be123c") + T_(20, 83, 11.5, "across 4 bills", "color:#71717a") + T_(20, 100, 11.5, "expected months without a file", "color:#a1a1aa"))}</div>
+  <div class="p1kpi">${card(653, 156, 283, 125, T_(20, 16, 13, "Year-to-date coverage", "color:#3f3f46") + T_(20, 44, 34, "97%", "font-weight:600") + `<div class="abs" style="left:20px;top:86px;width:240px;height:7px;border-radius:4px;background:#f4f4f5"><div id="covBar" style="height:7px;border-radius:4px;background:#16a34a;width:97%"></div></div>` + T_(20, 100, 11.5, "145 of 149 expected files", "color:#71717a"))}</div>
+  <div class="p1kpi">${card(954, 156, 283, 125, T_(21, 16, 13, "Latest upload", "color:#3f3f46") + T_(21, 46, 30, "Yesterday", "font-weight:600") + T_(21, 83, 12, "Salary", "color:#27272a") + T_(21, 100, 11.5, "Nov 2026 · .png", "color:#a1a1aa"))}</div>
+  ${card(49, 300, 727, 536, `
+    ${T_(24, 20, 16.5, 'Still due in November <span style="display:inline-block;background:#fef3c7;color:#b45309;border-radius:999px;font-size:11px;padding:1px 9px;margin-left:6px;vertical-align:2px">11</span>', "font-weight:600")}
+    ${T_(24, 43, 11.5, "Scheduled bills with no file for this month yet", "color:#71717a")}
+    <div class="abs" id="dueChips" style="left:24px;top:73px;width:690px;line-height:0">${["Car Loan", "Credit Card", "Electricity", "Phone", "Streaming", "Water", "Insurance Health", "Internet Invoice", "Internet Payment", "Internet Receipt", "Mortgage Received"].map((c) => `<span class="chipy">${c}</span>`).join("")}</div>
+    <div class="abs" style="left:24px;top:140px;width:678px;height:1px;background:#f4f4f5"></div>
+    ${T_(24, 157, 16.5, 'Missing files <span style="display:inline-block;background:#ffe4e6;color:#be123c;border-radius:999px;font-size:11px;padding:1px 9px;margin-left:6px;vertical-align:2px">4</span>', "font-weight:600")}
+    ${T_(24, 180, 11.5, "Scheduled past months with no file: paid but not uploaded, or not paid?", "color:#71717a")}
+    <div id="missList">${[["Electricity", "Jun"], ["HOA Payment", "Oct"], ["Internet Receipt", "Oct"], ["Water", "Oct"]].map(([b, m], i) => `<div class="abs" style="left:24px;top:${204 + i * 21}px;width:330px;font-size:12.5px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ffe4e6;color:#be123c;font-size:8px;line-height:10px;text-align:center;margin-right:8px;font-weight:700">×</span>${b}<span style="position:absolute;left:304px;color:#be123c;font-weight:600;font-size:11.5px">${m}</span></div>`).join("")}</div>
+  `)}
+  ${card(795, 300, 442, 241, `
+    ${T_(23, 20, 16.5, "Bills with a file, per month", "font-weight:600")}
+    ${T_(23, 45, 11.5, "Peak: April with 20", "color:#71717a")}
+    <div id="chartBars">${BARS.map((v, i) => { const x = 32 + i * 32.6, hh = v / 20 * 126; return `<div class="abs bar" style="left:${x - 9.5}px;top:${208 - hh}px;width:19px;height:${hh}px;border-radius:3px;background:${i === 10 ? "#2563eb" : "#3f3f46"};transform-origin:50% 100%"></div><div class="abs bv" style="left:${x - 15}px;width:30px;top:${195 - hh}px;text-align:center;font-size:10px;font-weight:600;color:${i === 10 ? "#2563eb" : "#71717a"}">${v || ""}</div><div class="abs" style="left:${x - 10}px;width:20px;top:216px;text-align:center;font-size:10.5px;font-weight:${i === 10 ? 700 : 500};color:${i === 10 ? "#2563eb" : i > 10 ? "#e4e4e7" : "#71717a"}">${MON[i][0]}</div>`; }).join("")}</div>
+    <div class="abs" style="left:16px;right:16px;top:208px;height:1px;background:#e4e4e7"></div>
+  `)}
+  ${card(795, 560, 442, 276, `
+    ${T_(23, 20, 16.5, "Highlights", "font-weight:600")}
+    ${[["Longest streak", "Rent · 11 months in a row"], ["Up to date", "16 of 20 scheduled bills"], ["Files this year", "178 &nbsp;(87 PDF · 91 images)"], ["Never flagged", "3 irregular · 1 not scheduled"]].map(([a, b], i) => `${T_(23, 50 + i * 24.5, 12.5, a, "color:#71717a")}<div class="t" style="right:24px;top:${50 + i * 24.5}px;font-size:12.5px;font-weight:600">${b}</div><div class="abs" style="left:23px;right:24px;top:${68 + i * 24.5}px;height:1px;background:#f4f4f5"></div>`).join("")}
+    ${T_(23, 155, 13.5, 'Housekeeping <span style="display:inline-block;background:#f4f4f5;color:#71717a;border-radius:999px;font-size:10px;padding:1px 8px;margin-left:5px;vertical-align:1px">4</span>', "font-weight:600;color:#27272a")}
+    <div id="hk">${[["config.local.json", "created from the settings window"], ["202512 Rent.pdf", "dated 2025, not 2026"], ["202600 Water.pdf", "month \"00\" isn't 01–12"], ["notes.txt", ".txt files aren't supported"]].map(([f, why], i) => `<div class="t hkline" style="left:23px;top:${177 + i * 17}px;font-size:11.5px"><span style="font-weight:500;color:#18181b">${f}</span>&nbsp;&nbsp;<span style="color:#71717a">${why}</span></div>`).join("")}</div>
+  `)}
+  ${footerP(1)}
+</div>`);
+
+// Page 2: the bill matrix
+const MX = [ // [group | name, sublabel, schedule months (null = none / irregular), files, payments, status]
+  ["GENERAL", 12, "6 due · 2 missing"],
+  ["Car Loan", "from Feb", range(2, 12), range(2, 10), {}, "due"], ["Charity", "", null, [5], {}, "Not scheduled"],
+  ["Credit Card", "", range(1, 12), range(1, 10), {}, "due"], ["Electricity", "", range(1, 12), [1, 2, 3, 4, 5, 7, 8, 9, 10], {}, "missdue"],
+  ["Gym", "until May", range(1, 5), range(1, 5), {}, "ok"], ["Home Meter", "", null, [7, 8, 9, 10], { 8: 2, 10: 2 }, "Irregular"],
+  ["Phone", "", range(1, 12), range(1, 10), {}, "due"], ["Property Tax", "Jan", [1], [1, 2], {}, "ok"],
+  ["Rent", "", range(1, 12), range(1, 11), {}, "ok"], ["Salary", "", range(1, 12), range(1, 11), {}, "ok"],
+  ["Streaming", "", range(1, 12), range(1, 10), {}, "due"], ["Water", "", range(1, 12), range(1, 9), {}, "missdue"],
+  ["GROCERIES", 2, ""], ["Market", "", null, range(3, 7), {}, "Irregular"], ["Online", "", null, [3, 4, 9], {}, "Irregular"],
+  ["HOA", 2, "1 missing"], ["Invoice", "quarterly", [1, 4, 7, 10], [1, 4, 7, 10], {}, "ok"], ["Payment", "quarterly", [1, 4, 7, 10], [1, 4, 7], {}, "miss"],
+  ["INSURANCE", 3, "1 due"], ["Car", "quarterly", [1, 4, 7, 10], [1, 4, 7, 10], {}, "ok"], ["Health", "", range(1, 12), range(1, 10), {}, "due"], ["Life", "Jan, Jul", [1, 7], [1, 7], {}, "ok"],
+  ["INTERNET", 3, "3 due · 1 missing"], ["Invoice", "from Mar", range(3, 12), range(3, 10), {}, "due"], ["Payment", "from Mar", range(3, 12), range(3, 10), {}, "due"], ["Receipt", "from Mar", range(3, 12), range(3, 9), {}, "missdue"],
+];
+const COLX = (m) => 408 + (m - 1) * 51.9; // month column centres
+const CHECK = '<svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#16a34a"/><path d="M4.6 8.3l2.2 2.2 4.6-4.8" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const DUE = '<svg width="15" height="15" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="#fef3c7" stroke="#d97706" stroke-width="1.2" stroke-dasharray="2 1.6"/><path d="M8 5v3.2l2 1.2" fill="none" stroke="#b45309" stroke-width="1.3" stroke-linecap="round"/></svg>';
+const MISS = '<svg width="13" height="13" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#ffe4e6"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" stroke="#be123c" stroke-width="1.8" stroke-linecap="round"/></svg>';
+const statusPill = (s) => s === "due" ? `<span class="sp" style="background:#fef3c7;color:#b45309">Due</span>` : s === "ok" ? `<span class="sp" style="background:#dcfce7;color:#15803d">Up to date</span>` : s === "miss" ? `<span class="sp" style="background:#ffe4e6;color:#be123c">1 missing</span>`
+  : s === "missdue" ? `<span class="sp" style="background:#ffe4e6;color:#be123c">1 missing</span> <span class="sp" style="background:#fef3c7;color:#b45309">Due</span>` : `<span style="color:#a1a1aa;font-size:11px">${s}</span>`;
+let mxY = 158;
+const mxCells = []; // { el, kind, col, row }
+const mxRows = MX.map((r) => {
+  const y = mxY;
+  const isGroup = typeof r[1] === "number";
+  mxY += 23.1;
+  if (isGroup) return `<div class="abs" style="left:50px;top:${y}px;width:1186px;height:23px;background:#f4f4f5"></div>${T_(70, y + 4, 11.5, `${r[0]} <span style="color:#a1a1aa;font-weight:500;letter-spacing:0">&nbsp;${r[1]}</span>`, "font-weight:700;letter-spacing:.08em;color:#27272a")}${T_(1094, y + 5, 11, r[2], "color:#71717a")}`;
+  const [name, sub, sched, files, n, st] = r;
+  let s = `${T_(82, y + 4, 12.5, name)}${sub ? `<div class="t" style="right:${1286 - 366}px;top:${y + 7}px;font-size:9.5px;color:#a1a1aa">${sub}</div>` : ""}`;
+  for (let m = 1; m <= 12; m++) {
+    const x = COLX(m);
+    const file = files.includes(m), exp = sched && sched.includes(m);
+    let kind = file ? "check" : exp && m < 11 ? "miss" : exp && m === 11 ? "due" : m <= 11 ? "dot" : "";
+    if (!kind) continue;
+    const id = `mx${mxCells.length}`;
+    mxCells.push({ id, kind, m, y });
+    s += kind === "dot" ? `<div class="abs" id="${id}" style="left:${x - 1}px;top:${y + 10}px;width:2px;height:2px;border-radius:1px;background:#d4d4d8"></div>`
+      : `<div class="abs" id="${id}" style="left:${x - 8}px;top:${y + 4}px;width:16px;height:16px;display:grid;place-items:center">${kind === "check" ? CHECK : kind === "due" ? DUE : MISS}${n[m] ? `<span style="position:absolute;left:14px;top:-4px;font-size:8.5px;font-weight:700;color:#15803d">${n[m]}</span>` : ""}</div>`;
+  }
+  s += `<div class="t" style="left:1020px;width:40px;top:${y + 4}px;font-size:12.5px;font-weight:600;text-align:center">${files.length}</div><div class="t" style="left:1094px;top:${y + 3}px">${statusPill(st)}</div>`;
+  return s;
+}).join("");
+const page2 = H(`<div class="abs" style="inset:0;background:#fff">
+  ${T_(49, 47, 23, 'Bill matrix <span style="color:#a1a1aa;font-weight:500;font-size:19px">&nbsp;2026</span>', "font-weight:700;letter-spacing:-.01em")}
+  ${T_(49, 80, 11, "Expected months come from the app's settings (config.local.json next to the app). Irregular and not-scheduled bills are shown but never flagged.", "color:#71717a")}
+  <div class="t" style="left:858px;top:55px;font-size:11.5px;color:#3f3f46;display:flex;gap:18px;align-items:center"><span>${CHECK.replace('width="15" height="15"', 'width="13" height="13"')} File found</span><span>${DUE.replace('width="15" height="15"', 'width="13" height="13"')} Due this month</span><span>${MISS.replace('width="13" height="13"', 'width="12" height="12"')} Missing</span><span style="color:#71717a">· Not expected</span></div>
+  <div class="abs" style="left:49px;top:116px;width:1189px;height:${mxY - 116 + 2}px;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden">
+    <div class="abs" style="left:852px;top:0;width:51px;height:100%;background:#eff6ff"></div>
+  </div>
+  ${T_(70, 129, 10.5, "BILL", "letter-spacing:.08em;color:#71717a;font-weight:600")}
+  ${MON.map((m, i) => `<div class="t" style="left:${COLX(i + 1) - 20}px;width:40px;top:${i === 10 ? 124 : 129}px;font-size:10.5px;text-align:center;letter-spacing:.06em;font-weight:600;color:${i === 10 ? "#2563eb" : i === 11 ? "#a1a1aa" : "#71717a"}">${m.toUpperCase()}${i === 10 ? '<div style="font-size:7.5px;margin-top:-1px">NOW</div>' : ""}</div>`).join("")}
+  ${T_(1021, 129, 10.5, "TOTAL", "letter-spacing:.08em;color:#71717a;font-weight:600")}${T_(1094, 129, 10.5, "STATUS", "letter-spacing:.08em;color:#71717a;font-weight:600")}
+  <div class="abs" style="left:50px;top:155px;width:1186px;height:1px;background:#e4e4e7"></div>
+  ${mxRows}
+  ${footerP(2)}
+</div>`);
+page2.querySelectorAll(".sp").forEach((e) => Object.assign(e.style, { display: "inline-block", borderRadius: "999px", padding: "0 9px", fontSize: "11px", fontWeight: "600", lineHeight: "17px" }));
+const mxEls = mxCells.map((c) => ({ ...c, el: page2.querySelector("#" + c.id) }));
+const homeY = MX.slice(0, 7).reduce((y) => y + 23.1, 158) - 23.1 * 1 + 23.1; // Home Meter row top
+// Page 4: electricity
+const CYC = [["4 Jul", "6 Aug", 243.9, 33, "7.4"], ["6 Aug", "26 Aug", 150.7, 20, "7.7"], ["26 Aug", "12 Sep", 133.8, 17, "7.7"], ["12 Sep", "14 Oct", 256.1, 32, "8.0"]];
+const kpi = (x, title, val, unit, l1, l2) => card(x, 153, 283, 112, T_(21, 15, 13, title, "color:#3f3f46") + T_(21, 38, 32, `${val} <span style="font-size:17px;color:#a1a1aa;font-weight:500">${unit}</span>`, "font-weight:600") + T_(21, 75, 11.5, l1, "color:#71717a") + (l2 ? T_(21, 92, 11.5, l2, "color:#a1a1aa") : ""));
+const page4 = H(`<div class="abs" style="inset:0;background:#fff">
+  ${T_(49, 47, 12, "ELECTRICITY", "letter-spacing:.14em;font-weight:600;color:#71717a")}
+  ${T_(48, 64, 39, "Home Meter · 2026", "font-weight:700;letter-spacing:-.02em")}
+  ${T_(49, 117, 13.5, "13 meter photos &nbsp;·&nbsp; read by Claude (Anthropic) · claude-haiku-5-5 &nbsp;·&nbsp; 2 corrected by hand &nbsp;·&nbsp; 3 dated by their top-up's payment", "color:#71717a")}
+  ${pill(1130, 72, "All photos read", "#15803d", "#dcfce7", 107, 26, 12.5)}
+  <div class="p4kpi">${kpi(49, "Used between top-ups", "785", "kWh", "4 Jul – 14 Oct", "about 196 kWh from one top-up to the next")}</div>
+  <div class="p4kpi">${kpi(351, "Average per day", "7.7", "kWh", "over 102 days between dated photos", "lately 8.0 a day, since 12 Sep")}</div>
+  <div class="p4kpi">${kpi(653, "Spent in 2026", "169.40", "USD", "5 top-ups, about every 25 days", "")}</div>
+  <div class="p4kpi">${kpi(954, "Balance", "322.5", "kWh", "at the last photo, 14 Oct", "next top-up around 16 Nov")}</div>
+  ${card(49, 284, 742, 552, `
+    ${T_(24, 20, 16.5, "kWh used between top-ups", "font-weight:600")}
+    ${[["FROM", 24], ["TO", 107], ["KWH USED", 236], ["DAYS", 563], ["KWH A DAY", 655]].map(([l, x]) => T_(x, 55, 10, l, "letter-spacing:.06em;color:#71717a;font-weight:600")).join("")}
+    <div class="abs" style="left:24px;right:24px;top:72px;height:1px;background:#e4e4e7"></div>
+    ${CYC.map(([a, b, used, days, pd], i) => `<div class="cyc abs" style="left:0;right:0;top:${78 + i * 27.5}px;height:27px">${T_(24, 6, 12.5, a)}${T_(107, 6, 12.5, b)}<div class="t" style="left:236px;width:57px;top:6px;font-size:12.5px;font-weight:600;text-align:right">${used}</div><div class="abs" style="left:308px;top:9px;width:202px;height:9px;border-radius:5px;background:#f4f4f5"><div class="cbar" style="height:9px;border-radius:5px;background:#3f3f46;width:${used / 256.1 * 100}%"></div></div><div class="t" style="left:560px;width:32px;top:6px;font-size:12.5px;text-align:right;color:#71717a">${days}</div><div class="t" style="left:680px;width:38px;top:6px;font-size:12.5px;text-align:right;color:${i === 3 ? "#3f3f46" : "#71717a"}">${pd}</div><div class="abs" style="left:24px;right:24px;top:26px;height:1px;background:#f4f4f5"></div></div>`).join("")}
+    <div class="abs" style="left:462px;top:72px;height:112px;border-left:1px dashed #71717a"></div>
+    <div class="abs" style="left:24px;right:24px;top:189px;height:1px;background:#d4d4d8"></div>
+    ${T_(24, 194, 12.5, "Total", "font-weight:600")}<div class="t" style="left:236px;width:57px;top:194px;font-size:12.5px;font-weight:600;text-align:right">785</div>${T_(308, 196, 10, "dashed line: 196 kWh on average", "color:#a1a1aa")}<div class="t" style="left:560px;width:32px;top:194px;font-size:12.5px;text-align:right;color:#71717a">102</div><div class="t" style="left:680px;width:38px;top:194px;font-size:12.5px;text-align:right;font-weight:600">7.7</div>
+    <div class="abs" id="formula" style="left:24px;top:236px;font:600 22px Inter;color:#09090b;font-variant-numeric:tabular-nums;white-space:nowrap">328.64 <span style="color:#a1a1aa">−</span> 72.52 <span style="color:#a1a1aa">=</span> 256.1 kWh <span style="color:#a1a1aa;font-weight:500">over</span> 32 days <span style="color:#a1a1aa">=</span> 8.0 kWh a day</div>
+    ${T_(24, 500, 10, "Used = credit just after one top-up − credit just before the next: exact even when a photo has no date.", "color:#a1a1aa")}
+  `)}
+  ${card(810, 284, 427, 552, `
+    ${T_(24, 20, 16.5, "Next top-up", "font-weight:600")}
+    ${[["Around", "16 Nov", "when the credit is down to about 68 kWh"], ["Credit runs out", "about 25 Nov", "322.5 kWh left on 14 Oct"], ["Last top-up", "14 Oct · 250 kWh", "USD 38.50 · 27 days ago"], ["Usually every", "25 days", "1.2 top-ups a month"], ["Used per top-up", "196 kWh", "average, from one top-up to the next"], ["You top up at", "68 kWh left", "usual credit just before a top-up"]].map(([a, b, c], i) => `<div class="nt abs" style="left:0;right:0;top:${56 + i * 41}px">${T_(24, 0, 12.5, a, "color:#3f3f46")}<div class="t" style="right:24px;top:0;font-size:12.5px;font-weight:600">${b}</div><div class="t" style="right:24px;top:17px;font-size:10px;color:#a1a1aa">${c}</div><div class="abs" style="left:24px;right:24px;top:35px;height:1px;background:#f4f4f5"></div></div>`).join("")}
+    ${T_(24, 466, 10, "TOP-UPS IN 2026", "letter-spacing:.08em;color:#71717a;font-weight:600")}
+    <div class="abs" style="left:24px;right:24px;top:506px;height:1px;background:#e4e4e7"></div>
+    ${MON.map((m, i) => `<div class="t" style="left:${40 + i * 31.5 - 6}px;width:12px;text-align:center;top:514px;font-size:9.5px;color:#a1a1aa">${m[0]}</div><div class="abs" style="left:${40 + i * 31.5}px;top:503px;width:1px;height:6px;background:#e4e4e7"></div>`).join("")}
+    <div id="tl">${[[6, 4], [7, 6], [7, 26], [8, 12], [9, 14]].map(([m, d], i) => `<div class="abs tdot" style="left:${40 + (m + (d - 1) / 30) * 31.5 - 5.5}px;top:500px;width:11px;height:11px;border-radius:50%;background:#16a34a"></div>`).join("")}<div class="abs tdot" style="left:${40 + (10 + 15 / 30) * 31.5 - 5.5}px;top:500px;width:11px;height:11px;border-radius:50%;border:1.2px dashed #71717a"></div></div>
+  `)}
+  ${footerP(4)}
+</div>`);
+// Page 5: top-ups
+const TU = [["1", "Sat 4 Jul", "—", "58.10", "+250.00", "308.10", "38.50", "—", "—", ""], ["2", "Thu 6 Aug", "33", "64.20", "+250.00", "314.20", "38.50", "243.9", "7.4", ""],
+  ["3", "Wed 26 Aug", "20", "~163.50", "+48.94", "~212.44", "15.40", "~150.7", "~7.7", "payment only: credit before and after<br>estimated from usage · kWh bought<br>estimated from usage"],
+  ["4", "Sat 12 Sep", "17", "78.64", "+250.00", "328.64", "38.50", "~133.8", "~7.7", ""], ["5", "Wed 14 Oct", "32", "72.52", "+250.00", "322.52", "38.50", "256.1", "8.0", ""]];
+const TUX = [[72, 20, "c"], [104, 120, "l"], [222, 80, "r"], [323, 80, "r"], [430, 80, "r"], [531, 80, "r"], [665, 80, "r"], [787, 80, "r"], [886, 80, "r"], [996, 240, "l"]];
+const page5 = H(`<div class="abs" style="inset:0;background:#fff">
+  ${T_(49, 47, 23, 'Home Meter top-ups <span style="color:#a1a1aa;font-weight:500;font-size:19px">&nbsp;2026</span>', "font-weight:700;letter-spacing:-.01em")}
+  ${T_(49, 81, 11, "Each top-up on one row: the credit just before, the kWh added, the credit just after and what you paid (from its Payment file).", "color:#71717a")}
+  <div class="abs" style="left:49px;top:116px;width:1189px;height:213px;border:1px solid #e4e4e7;border-radius:14px;overflow:hidden"><div class="abs" style="left:0;right:0;top:0;height:40px;background:#fafafa;border-bottom:1px solid #e4e4e7"></div></div>
+  ${[["#", 0], ["TOP-UP DATE", 1], ["DAYS SINCE<br>LAST TOP-UP", 2], ["BEFORE<br>KWH", 3], ["TOPPED UP<br>KWH", 4], ["AFTER<br>KWH", 5], ["PAID<br>USD", 6], ["USED SINCE<br>LAST TOP-UP", 7], ["PER DAY<br>KWH", 8], ["NOTES", 9]].map(([l, c]) => { const [x, w, a] = TUX[c]; return `<div class="t" style="left:${x}px;width:${w}px;top:${l.includes("<br>") ? 123 : 129}px;font-size:10px;line-height:14px;letter-spacing:.06em;color:#71717a;font-weight:600;text-align:${a === "r" ? "right" : a === "c" ? "center" : "left"}">${l}</div>`; }).join("")}
+  ${TU.map((r, i) => { const y = [157, 186, 215, 272, 301][i]; return `<div class="tur abs" style="left:50px;width:1187px;top:${y}px;height:${i === 2 ? 57 : 29}px;background:${i % 2 ? "#fafafa" : "#fff"}"></div>` + r.map((v, c) => { const [x, w, a] = TUX[c]; const col = c === 0 ? "#a1a1aa" : c === 4 ? "#15803d" : v.startsWith("~") && c !== 7 ? "#a1a1aa" : c === 8 ? "#71717a" : "#09090b"; const fw = c === 4 || c === 7 || c === 2 ? 600 : 400; return `<div class="t" style="left:${x}px;width:${w}px;top:${y + 6}px;font-size:${c === 9 ? 10.5 : 12.5}px;line-height:${c === 9 ? 13 : 17}px;color:${c === 9 ? "#71717a" : col};font-weight:${fw};text-align:${a === "r" ? "right" : a === "c" ? "center" : "left"}">${v}</div>`; }).join(""); }).join("")}
+  ${T_(49, 340, 10, "~ estimated: a top-up with only payment files. The kWh used from the top-up before it to the one after stays exact; it's split between the two by time.", "color:#a1a1aa")}
+  ${footerP(5)}
+</div>`);
+const pages = [page1, page2, page4, page5];
+pages.forEach((p) => pageWrap.append(p));
+
+// ── Menus (the app's <select>s, opened) ──
+function menu(items, width) {
+  const e = h("div", { class: "menu", style: { width: width + "px" } });
+  const hl = h("div", { class: "hl" });
+  e.append(hl);
+  items.forEach((it) => e.append(h("div", { class: "item" }, h("span", { class: "check" }), it)));
+  win.append(e);
+  return { e, hl, checks: [...e.querySelectorAll(".check")], n: items.length };
+}
+const TYPES = ["Monthly", "Quarterly", "Every N months", "Specific months", "Irregular", "Not scheduled"];
+const mIns = menu(TYPES, 180), mGym = menu(TYPES, 180), mEvery = menu(range(1, 12).map(String), 64), mUntil = menu(MON, 72);
+const mReader = menu(["Off: don't send any photos", "Claude (Anthropic)", "ChatGPT (OpenAI)"], 384), mShows = menu(["Balance", "Top-up", "Ignore"], 112);
+
+// ── HUD: keycaps and the cursor ──
+const keycaps = [["⌘", "S"], ["⌘", "↵"]].map((keys) => {
+  const g = h("div", { class: "abs", style: { left: "0", top: "0" } });
+  keys.forEach((k, i) => g.append(h("div", { class: "keycap", style: { left: i * 86 + "px", top: "0" } }, k)));
+  hud.append(g);
+  return g;
+});
+const cursor = H(`<svg class="abs" width="30" height="30" viewBox="0 0 30 30" style="left:0;top:0;transform-origin:4px 3px">
+  <path d="M5 2.5 L5 23.5 L10.2 18.6 L13.6 26.4 L17.3 24.8 L13.9 17.2 L21 17.2 Z" fill="#09090b" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>`);
+hud.append(cursor);
+
+// ══ Measure (all layers at rest, before the first seek) ═════════════════════
+const W0 = world.getBoundingClientRect();
+function R(el) { const r = el.getBoundingClientRect(); return { x: r.left - W0.left, y: r.top - W0.top, w: r.width, h: r.height, cx: r.left - W0.left + r.width / 2, cy: r.top - W0.top + r.height / 2 }; }
+const ROWH = 55, DETAILH = 38;
+rowEls.forEach((r, i) => { r.el.style.top = i * ROWH + "px"; });
+const rowBox = R(rowsBox);
+const rowR = (i, extra = 0) => ({ x: rowBox.x, y: rowBox.y + i * ROWH + extra, w: rowBox.w, h: ROWH });
+const M = {
+  bills: R(headActions.querySelector("#btnBills")), folder: R(headActions.querySelector("#btnFolder")),
+  browse: R(sheet.querySelector("#browseBtn")), folderInp: R(sheet.querySelector("#folderInp")), sheetX: R(sheet.querySelector("#sheetX")),
+  folderCard: R(sheet.querySelector("#folderCard")), metersCard: R(sheet.querySelector("#metersCard")), examples: R(sheet.querySelector("#examples")),
+  readerSel: R(sheet.querySelector("#readerSel")), keyInp: R(sheet.querySelector("#keyInp")), keySave: R(sheet.querySelector("#keySave")),
+  schedBtn: R(bills.querySelector("#schedBtn")), readBtn: R(readCard.querySelector("#readBtn")),
+  save: R(footer.querySelector("#saveBtn")), gen: R(footer.querySelector("#genBtn")), openPdf: R(footer.querySelector("#openPdf")),
+};
+const rowSel = (i) => R(rowEls[i].el.querySelector(".row-main > .sel, .row-main > .stack.sel"));
+const rowZap = (i) => R(rowEls[i].zap);
+const rowMonth = (i, m) => R(rowEls[i].mb[m - 1]);
+M.insSel = rowSel(R_INS); M.gymSel = rowSel(R_GYM); M.homeZap = rowZap(R_HOME); M.homeOct = rowMonth(R_HOME, 10);
+M.gymEvery = R(rowEls[R_GYM].el.querySelector("#gEvery")); M.gymUntil = R(rowEls[R_GYM].el.querySelector("#gUntil"));
+M.homeRow = rowR(R_HOME); M.insRow = rowR(R_INS); M.gymRow = rowR(R_GYM);
+// readings rows (the card replaces the start card; measured while shown)
+const rr = (i) => ({ tr: R(rrows[i].tr), file: R(rrows[i].file), shows: R(rrows[i].shows[1]), kwh: R(rrows[i].kwh[1]), taken: R(rrows[i].taken[0]) });
+M.rr = READINGS.map((_, i) => rr(i));
+M.sheetScroll = M.metersCard.y - 58; // scrolled so the meters card starts at the top
+M.readerFieldsH = readerFields.scrollHeight;
+M.pay = { x: 760, y: 120 }; // where the payment screenshot sits
+M.payDate = (() => { payShot.style.left = M.pay.x + "px"; payShot.style.top = M.pay.y + "px"; return R(payShot.querySelector("#payDate")); })();
+M.photoX = { cx: 90 + 1100 - 28, cy: 60 + 30 };
+
+// ══ Timeline ════════════════════════════════════════════════════════════════
+const RECT = {
+  icon: [552, 432, 176, 176, 39.5], win: [0, 0, 1280, 1040, 12], chip: [70, 466, 1140, 108, 54], chip2: [70, 420, 1140, 200, 30], card: [70, 340, 1140, 410, 28],
+  page: [PG.x, PG.y, 1286 * PG.s, 909 * PG.s, 4],
+};
+const shapeR = track([
+  [0, RECT.icon], [bt(1, 4), RECT.win], [bt(3, 1), RECT.chip], [bt(3, 2), RECT.chip2], [bt(3, 3), RECT.card], [bt(4, 1), RECT.win],
+  [bt(12, 3), RECT.page], [bt(16, 2), RECT.win], [bt(16, 3), RECT.icon],
+], SP);
+const C = { icon: hex("#18181b"), bg: hex("#fafafa"), white: hex("#ffffff") };
+const shapeBg = track([[0, C.icon], [bt(1, 4), C.bg], [bt(3, 1), C.white], [bt(4, 1), C.bg], [bt(12, 3), C.white], [bt(16, 2), C.bg], [bt(16, 3), C.icon]], FAST);
+const shapeBorder = track([[0, 0], [bt(1, 4), 1], [bt(16, 3), 0]], FAST);
+// presses on the icon (double-click)
+const DCLICK = [bt(1, 3), bt(1, 3) + 0.13];
+
+// Camera [cx, cy, zoom] in world coordinates
+const pc = (x, y) => P(x, y);
+const cam = track([
+  [0, [640, 520, 1.15]],
+  [bt(1, 4), [640, 520, 1.04]],
+  [bt(2, 2) + 0.1, [1050, 250, 2.5]],
+  [bt(3, 1), [640, 520, 1.12]],
+  [bt(3, 3), [640, 545, 1.12]],
+  [bt(4, 1), [640, 520, 1.04]],
+  [bt(4, 2), [560, M.insRow.y + 27 - 20, 1.55]],
+  [bt(4, 4), [700, M.homeRow.y + 27, 1.9]],
+  [bt(5, 1), [560, M.gymRow.y + 46, 1.55]],
+  [bt(6, 1), [640, 470, 1.25]],
+  [bt(6, 2), [640, 520, 1.44]],
+  [bt(6, 4) + 0.15, [520, M.homeRow.y + 60, 1.6]],
+  [bt(7, 1), [380, M.homeRow.y + 64, 2.0]],
+  [bt(7, 3), [1050, M.examples.cy - M.sheetScroll - 30, 2.3]],
+  [bt(8, 1), [1050, M.readerSel.y - M.sheetScroll + 120, 2.5]],
+  [bt(8, 4) + 0.35, [640, 520, 1.04]],
+  [bt(9, 1) + 0.15, [700, 470, 1.18]],
+  [bt(10, 1), [640, 520, 1.36]],
+  [bt(10, 2) + 0.2, [760, M.rr[R_SEP].kwh.cy, 1.6]],
+  [bt(10, 4), [760, M.rr[R_GLARE].kwh.cy - 40, 1.6]],
+  [bt(11, 1), [540, 450, 1.32]],
+  [bt(12, 1), [980, 990, 1.9]],
+  [bt(12, 3), [640, 520, 1.08]],
+  [bt(13, 1), [...pc(643, 220), 1.4]],
+  [bt(13, 2), [...pc(1016, 420), 2.1]],
+  [bt(13, 4), [...pc(412, 450), 1.7]],
+  [bt(14, 1), [...pc(643, 460), 1.08]],
+  [bt(14, 2), [...pc(560, 420), 1.3]],
+  [bt(14, 4), [...pc(560, 310), 2.0]],
+  [bt(15, 1), [...pc(643, 210), 1.4]],
+  [bt(15, 2), [...pc(420, 440), 1.75]],
+  [bt(15, 3), [...pc(1024, 560), 1.75]],
+  [bt(15, 4), [...pc(650, 250), 1.45]],
+  [bt(16, 1), [...pc(1016, 768), 2.2]],
+  [bt(16, 2), [820, 985, 1.5]],
+  [bt(16, 3), [640, 520, 1.15]],
+], SOFT);
+
+// Cursor [x, y] in world coordinates, and its clicks
+const cxy = (r, dx = 0, dy = 0) => [r.cx + dx, r.cy + dy];
+const menuItemY = (m, sel, idx, anchor) => anchor.cy + (idx - sel) * 26; // native menus open with the selected item over the select
+const curK = [
+  [0, [905, 690]],
+  [bt(1, 1) + 0.12, [662, 548]],
+  [bt(1, 4) + 0.2, [760, 640]],
+  [bt(2, 1) + 0.1, cxy(M.folder, 10, 4)],
+  [bt(2, 2) + 0.3, cxy(M.browse, 6, 3)],
+  [bt(2, 4), [M.browse.cx + 40, M.browse.cy + 60]],
+  [bt(3, 1) + 0.2, [700, 600]],
+  [bt(3, 2) - 0.12, [560, 552]],
+  [bt(3, 3) - 0.12, [420, 560]],
+  [bt(3, 4) - 0.12, [380, 660]],
+  [bt(3, 4) + 0.35, cxy(M.bills, 4, 4)],
+  [bt(4, 1) + 0.25, cxy(M.insSel, 10, 2)],
+  [bt(4, 2) + 0.2, [M.insSel.cx + 6, menuItemY(mIns, 0, 1, M.insSel)]],
+  [bt(4, 3) + 0.1, cxy(M.homeOct, 6, 10)],
+  [bt(4, 4) + 0.3, cxy(M.gymSel, 8, 3)],
+  [bt(5, 1) + 0.12, [M.gymSel.cx + 6, menuItemY(mGym, 0, 2, M.gymSel)]],
+  [bt(5, 1) + 0.4, cxy(M.gymEvery, 4, 3)],
+  [bt(5, 2) + 0.12, [M.gymEvery.cx + 4, menuItemY(mEvery, 1, 0, M.gymEvery)]],
+  [bt(5, 2) + 0.4, cxy(M.gymUntil, 4, 3)],
+  [bt(5, 3) + 0.12, [M.gymUntil.cx + 4, menuItemY(mUntil, 11, 4, M.gymUntil)]],
+  [bt(5, 4) + 0.2, cxy(M.schedBtn, 0, 4)],
+  [bt(6, 3), [1062, 296]],
+  [bt(6, 4) + 0.2, cxy(M.homeZap, 3, 2 + DETAILH)],
+  [bt(7, 3), [1180, M.examples.y - M.sheetScroll + 40]],
+  [bt(7, 4) + 0.2, [M.readerSel.cx + 120, M.readerSel.cy - M.sheetScroll + 3]],
+  [bt(8, 1) + 0.12, [M.readerSel.cx + 120, menuItemY(mReader, 0, 1, { cy: M.readerSel.cy - M.sheetScroll })]],
+  [bt(8, 2) + 0.3, [M.keyInp.cx - 60, M.keyInp.cy - M.sheetScroll + 3]],
+  [bt(8, 3) + 0.25, [M.keySave.cx, M.keySave.cy - M.sheetScroll + 3]],
+  [bt(8, 4) + 0.2, [M.sheetX.cx, M.sheetX.cy]],
+  [bt(8, 4) + 0.55, cxy(M.readBtn, 10, 3)],
+  [bt(9, 1) + 0.3, [M.readBtn.cx + 40, M.readBtn.cy + 70]],
+  [bt(9, 4) + 0.3, [M.rr[R_SEP].file.x + 120, M.rr[R_SEP].file.cy + 3]],
+  [bt(10, 1) + 0.3, [M.photoX.cx, M.photoX.cy]],
+  [bt(10, 2) + 0.2, [M.rr[R_SEP].kwh.cx + 20, M.rr[R_SEP].kwh.cy + 3]],
+  [bt(10, 3) + 0.25, [M.rr[R_GLARE].shows.cx, M.rr[R_GLARE].shows.cy + 3]],
+  [bt(10, 4) + 0.12, [M.rr[R_GLARE].shows.cx, menuItemY(mShows, 0, 2, M.rr[R_GLARE].shows)]],
+  [bt(10, 4) + 0.5, [M.payDate.cx + 60, M.payDate.cy + 40]],
+  [bt(11, 2) - 0.1, [M.payDate.cx + 20, M.payDate.cy + 6]],
+  [bt(11, 3) + 0.1, [M.rr[R_SEP].taken.cx + 60, M.rr[R_SEP].taken.cy + 30]],
+  [bt(11, 4) + 0.2, [M.gen.cx - 30, M.gen.cy + 4]],
+  [bt(12, 3), [880, 700]],
+  [bt(13, 1) + 0.1, pc(520, 260)],
+  [bt(13, 2), pc(1060, 470)],
+  [bt(13, 4), pc(380, 420)],
+  [bt(14, 1) + 0.2, pc(700, 540)],
+  [bt(14, 4), pc(800, 316)],
+  [bt(15, 1), pc(760, 260)],
+  [bt(15, 2), pc(600, 560)],
+  [bt(15, 3), pc(1100, 820)],
+  [bt(15, 4), pc(760, 290)],
+  [bt(16, 1), pc(1150, 790)],
+  [bt(16, 2), [M.openPdf.cx + 10, M.openPdf.cy + 4]],
+  [bt(16, 3) + 0.15, [850, 640]],
+  [bt(16, 4) + 0.1, [920, 700]],
+];
+const cur = track(curK, CUR);
+const CLICKS = [
+  ...DCLICK, bt(2, 2), bt(2, 3), bt(4, 1), bt(4, 2), bt(4, 3), bt(5, 1), bt(5, 1, 0.55), bt(5, 2), bt(5, 2, 0.55), bt(5, 3), bt(5, 4), bt(6, 1), bt(6, 4),
+  bt(7, 2), bt(8, 1), bt(8, 2), bt(8, 3), bt(8, 3, 0.75), bt(8, 4, 0.55), bt(9, 1), bt(10, 1), bt(10, 2), bt(10, 2, 0.6), bt(10, 4), bt(10, 4, 0.55), bt(16, 2, 0.5),
+];
+const KEYS = [ // typed characters
+  ...range(0, 7).map((i) => bt(8, 3, 0.08 + i * 0.075)), // API key (masked)
+  ...range(0, 4).map((i) => bt(10, 3, i * 0.16)), bt(10, 3, 0.75), // 78.64, Enter
+];
+const KEYCAPS = [[bt(8, 4), 0], [bt(12, 1), 1]];
+// Sounds for render.mjs, at beat positions (it snaps them to the song's measured transients)
+window.cues = [
+  ...CLICKS.map((t) => ({ t, type: "click" })), ...KEYS.map((t) => ({ t, type: "key" })), ...KEYCAPS.map(([t]) => ({ t, type: "keycap" })),
+  { t: bt(7, 2), type: "toggle" }, { t: bt(9, 2), type: "shutter" }, { t: bt(9, 3), type: "shutter" }, { t: bt(9, 4), type: "shutter" },
+];
+// The toggle click is the ⚡ itself
+window.cues = window.cues.filter((c) => !(c.type === "click" && Math.abs(c.t - bt(7, 2)) < 1e-6));
+
+// Windows of presence for each layer
+const W = {
+  icon: [[bt(16, 3) + 0.05, T + bt(1, 4) + 0.06]],
+  skel: [[bt(1, 4) + 0.12, bt(2, 1)]],
+  win: [[bt(2, 1) + 0.04, bt(3, 1)], [bt(4, 1) + 0.04, bt(12, 3)], [bt(16, 2) + 0.06, bt(16, 3)]],
+  anat: [[bt(3, 1) + 0.1, bt(4, 1)]],
+  pageAll: [[bt(12, 3) + 0.08, bt(16, 2)]],
+  p1: [[bt(12, 3) + 0.08, bt(14, 1)], [bt(16, 1) + 0.06, bt(16, 2)]], p2: [[bt(14, 1) + 0.06, bt(15, 1)]], p4: [[bt(15, 1) + 0.06, bt(15, 4)]], p5: [[bt(15, 4) + 0.06, bt(16, 1)]],
+  sheet: [[bt(2, 2), bt(3, 1)], [bt(7, 3), bt(8, 4, 0.55)]],
+  bills: [[bt(4, 1), bt(7, 3)]],
+  sched: [[bt(6, 1), bt(6, 4)]],
+  startCard: [[0, bt(7, 3)]], readCard: [[bt(7, 3), T]],
+  photo: [[bt(10, 1), bt(10, 2)]],
+  tiles: [[bt(9, 2) - 0.05, bt(10, 1) - 0.05]],
+  pay: [[bt(10, 4, 0.6), bt(12, 1)]],
+};
+
+// ══ Seek ════════════════════════════════════════════════════════════════════
+function seek(tRaw) {
+  const t = ((tRaw % T) + T) % T;
+
+  // Camera
+  const [ccx, ccy, z] = cam(t);
+  const ox = 720 - z * ccx, oy = 720 - z * ccy;
+  world.style.transform = `matrix(${z},0,0,${z},${ox},${oy})`;
+  const toScreen = (x, y) => [ox + z * x, oy + z * y];
+
+  // Shape
+  shape.set(shapeR(t));
+  shape.outer.style.background = rgb(shapeBg(t));
+  shape.outer.style.borderColor = rgb(hex("#e4e4e7"), shapeBorder(t));
+  const icP = 1 - 0.06 * DCLICK.reduce((a, tc) => a + press(t, tc), 0);
+  iconArt.style.transform = `scale(${icP})`;
+  fx(iconArt, vis(t, W.icon, FAST, { f: 6, z: 1 }), { blur: 10 });
+  fx(skel, vis(t, W.skel), { blur: 4 });
+  fx(win, vis(t, W.win), { blur: 8 });
+  fx(anat, vis(t, W.anat), { blur: 8 });
+  fx(pageWrap, vis(t, W.pageAll), { blur: 8 });
+  pageWrap.style.transform = `translate(${PG.x}px, ${PG.y}px) scale(${PG.s})` + (pageWrap.style.filter !== "none" ? "" : "");
+  fx(page1, vis(t, W.p1), { blur: 6 }); fx(page2, vis(t, W.p2), { blur: 6 }); fx(page4, vis(t, W.p4), { blur: 6 }); fx(page5, vis(t, W.p5), { blur: 6 });
+
+  // File chips: around the icon at the loop point; into the window at 1.4, out of the icon at 16.4
+  const out = 1 - S(t - bt(1, 4) + 0.02, SP) + S(t - bt(16, 3) - 0.18, SP); // 1 = on the ring
+  CHIPS.forEach(([name, sx, sy], i) => {
+    const e = chipEls[i];
+    const ringX = 640 + sx * 205, ringY = 520 + sy * 205;
+    const fl = 3 * Math.sin((2 * Math.PI * 4 * t) / T + i * 1.7); // drifts 4 times a loop
+    const v = clamp(out);
+    const x = mix(640, ringX, v), y = mix(520, ringY, v) + fl * v;
+    const wd = e.offsetWidth, ht = e.offsetHeight;
+    e.style.left = (sx < 0 ? x - wd : sx > 0 ? x : x - wd / 2) + "px";
+    e.style.top = (y - ht / 2) + "px";
+    if (sx === 0) e.style.left = x - wd / 2 + "px";
+    fx(e, clamp(v * 1.15 - 0.1), { blur: 6, scale: 0.4 });
+  });
+
+  // ── Window header and footer ──
+  const saved = vis(t, [[bt(8, 4), bt(16, 3) + 0.3]], SNAP, FAST);
+  const chip = document.getElementById("chip");
+  chip.style.background = rgb(mixc(hex("#fef3c7"), hex("#dcfce7"), saved));
+  chip.style.color = rgb(mixc(hex("#b45309"), hex("#15803d"), saved));
+  fx(document.getElementById("chipA"), 1 - saved, { blur: 4 }); fx(document.getElementById("chipB"), saved, { blur: 4 });
+  const nBills = vis(t, [[bt(2, 4), bt(16, 3) + 0.3]]);
+  fx(document.getElementById("billsN1"), nBills, { blur: 4, dy: 6 });
+  const st = [[[0, bt(4, 3)]], [[bt(4, 3) + 0.05, bt(8, 4)]], [[bt(8, 4) + 0.05, bt(12, 1, 0.25)]], [[bt(12, 1, 0.3), bt(16, 2)]], [[bt(16, 2) + 0.05, T - 0.001]]];
+  st.forEach((w, i) => fx(document.getElementById("st" + i), vis(t, w), { blur: 4, dy: 4 }));
+  const done = vis(t, [[bt(16, 2) + 0.1, T + 0.2]], SP);
+  const op = footer.querySelector("#openPdf"), rv = footer.querySelector("#reveal");
+  fx(op, done, { blur: 4, tx: (1 - done) * 30 }); fx(rv, done, { blur: 4, tx: (1 - done) * 20 });
+  const saveBtn = footer.querySelector("#saveBtn"), genBtn = footer.querySelector("#genBtn");
+  saveBtn.style.opacity = (1 - 0.45 * saved).toFixed(3);
+  genBtn.style.transform = `scale(${1 - 0.04 * press(t, bt(12, 1))})`;
+  // header buttons pressed
+  headActions.querySelector("#btnBills").style.background = rgb(mixc(hex("#ffffff"), hex("#f4f4f5"), press(t, bt(4, 1))));
+  headActions.querySelector("#btnFolder").style.background = rgb(mixc(hex("#ffffff"), hex("#f4f4f5"), press(t, bt(2, 2))));
+
+  // ── Sheet: folder, then meters ──
+  const sv = vis(t, W.sheet, SP, FAST);
+  sheet.style.transform = `translateX(${((1 - sv) * 470).toFixed(2)}px)`;
+  sheet.style.visibility = sv < 0.002 ? "hidden" : "visible";
+  dim.style.opacity = (sv * 1).toFixed(3);
+  const scroll = track([[0, 0], [bt(3, 3), M.sheetScroll, SNAP], [bt(9, 2), 0, SNAP]])(t);
+  sheetBody.style.transform = `translateY(${-scroll}px)`;
+  const br = vis(t, [[bt(2, 4), T]], SP);
+  fx(sheet.querySelector("#fi0"), 1 - br, { blur: 4 }); fx(sheet.querySelector("#fi1"), br, { blur: 4 });
+  fx(sheet.querySelector("#fo0"), 1 - br, { blur: 4 }); fx(sheet.querySelector("#fo1"), br, { blur: 4 });
+  const cnt = clamp(S(t - bt(2, 4), SOFT) * 1.0);
+  sheet.querySelector("#nFiles").textContent = fmtInt(178 * cnt);
+  sheet.querySelector("#nBills").textContent = fmtInt(24 * cnt);
+  sheet.querySelector("#browseBtn").style.background = rgb(mixc(hex("#ffffff"), hex("#f4f4f5"), press(t, bt(2, 3))));
+  // examples line in (7.4)
+  [...sheet.querySelectorAll("#examples li")].forEach((li, i) => fx(li, vis(t, [[bt(7, 4) + i * 0.06 - (t > bt(9, 1) ? 99 : 0), T + bt(3, 1)]]), { blur: 5, dy: 6 }));
+  // reader: Off → Claude
+  const cl = vis(t, [[bt(8, 2), T + bt(2, 1)]], SNAP);
+  fx(sheet.querySelector("#rs0"), 1 - cl, { blur: 3 }); fx(sheet.querySelector("#rs1"), cl, { blur: 3 });
+  const rf = track([[0, 0], [bt(8, 2), M.readerFieldsH], [bt(9, 2), 0, SNAP]])(t);
+  readerFields.style.height = Math.max(0, rf).toFixed(1) + "px";
+  readerFields.style.opacity = clamp(rf / M.readerFieldsH * 1.4 - 0.4).toFixed(3);
+  fx(sheet.querySelector("#rn0"), 1 - cl, { blur: 3 }); fx(sheet.querySelector("#rn1"), cl, { blur: 3 });
+  // API key: typed masked, saved, then only its last 4 shown
+  const typedN = KEYS.slice(0, 8).filter((k) => t >= k && t < bt(9, 1)).length;
+  const k1 = sheet.querySelector("#k1");
+  k1.textContent = "•".repeat(Math.round(typedN * 4.3));
+  const kSet = vis(t, [[bt(8, 3, 0.75), T + bt(2, 1)]], SNAP), kSaved = vis(t, [[bt(8, 4), T + bt(2, 1)]], SNAP);
+  fx(sheet.querySelector("#k0"), typedN ? 0 : 1 - kSet, { blur: 0 });
+  fx(k1, typedN && kSet < 0.5 ? 1 : 0, { blur: 0 });
+  fx(sheet.querySelector("#k2"), kSet, { blur: 3 });
+  fx(sheet.querySelector("#kn0"), 1 - kSet, { blur: 3 }); fx(sheet.querySelector("#kn1"), kSet - kSaved, { blur: 3 }); fx(sheet.querySelector("#kn2"), kSaved, { blur: 3 });
+  sheet.querySelector("#keyInp").style.borderColor = typedN && kSet < 0.5 ? "#a1a1aa" : "";
+  sheet.querySelector("#keySave").style.background = rgb(mixc(hex("#ffffff"), hex("#f4f4f5"), press(t, bt(8, 3, 0.75))));
+
+  // ── Bills dialog ──
+  const bv = vis(t, W.bills, SP, FAST);
+  fx(bills, bv, { blur: 0, dy: 8, scale: 0.012 }); billsDim.style.opacity = bv.toFixed(3); billsDim.style.visibility = bv < 0.002 ? "hidden" : "visible";
+  const gymOpen = S(t - bt(5, 1, 0.55), SP) - S(t - T + 0, SP) * 0; // the Every N months detail opens
+  const gymExtra = DETAILH * clamp(gymOpen);
+  rowEls.forEach((r, i) => {
+    r.el.style.top = (i * ROWH + (i > R_GYM ? gymExtra : 0)) + "px";
+    if (i === R_GYM) { r.el.style.height = ROWH + gymExtra + "px"; fx(r.detail, clamp(gymOpen * 1.3 - 0.3), { blur: 4, dy: -4 }); }
+    // expected months
+    for (let m = 1; m <= 12; m++) {
+      let on = 1;
+      if (i === R_INS) on = [1, 4, 7, 10].includes(m) ? 1 : 1 - S(t - bt(4, 3) - m * 0.018, FAST);
+      if (i === R_GYM) {
+        const every2 = m % 2 === 1 ? 1 : 0;
+        on = 1 - (1 - every2) * S(t - bt(5, 1, 0.55) - m * 0.018, FAST) + (1 - every2) * S(t - bt(5, 2, 0.55) - m * 0.018, FAST) - (m > 5 ? S(t - bt(5, 4) - (m - 5) * 0.025, FAST) : 0);
+      }
+      on = clamp(on);
+      r.mb[m - 1].style.background = rgb(mixc(hex("#f4f4f5"), hex("#3f3f46"), on));
+      r.ml[m - 1].style.color = rgb(mixc(hex("#a1a1aa"), hex("#ffffff"), on));
+    }
+    if (r.sel.length === 2) {
+      const tc = i === R_INS ? bt(4, 3) : bt(5, 1, 0.55);
+      const v = vis(t, [[tc, T + bt(4, 1)]], SNAP);
+      fx(r.sel[0], 1 - v, { blur: 3 }); fx(r.sel[1], v, { blur: 3 });
+    }
+  });
+  const ge = vis(t, [[bt(5, 2, 0.55), T + bt(4, 1)]], SNAP), gu = vis(t, [[bt(5, 4), T + bt(4, 1)]], SNAP);
+  const gE = [...rowEls[R_GYM].el.querySelectorAll("#gEvery > span")], gU = [...rowEls[R_GYM].el.querySelectorAll("#gUntil > span")];
+  const gWord = [...rowEls[R_GYM].el.querySelectorAll("#gWord > span")];
+  fx(gE[0], 1 - ge, { blur: 3 }); fx(gE[1], ge, { blur: 3 }); fx(gWord[0], 1 - ge, { blur: 3 }); fx(gWord[1], ge, { blur: 3 });
+  fx(gU[0], 1 - gu, { blur: 3 }); fx(gU[1], gu, { blur: 3 });
+  // Insurance Car's / Gym's file months: unchanged; the ⚡ on Home Meter
+  const zapOn = vis(t, [[bt(7, 2), T + bt(4, 1)]], SNAP);
+  const hz = rowEls[R_HOME].zap;
+  hz.querySelector(".zbg").style.background = rgb(hex("#fef3c7"), zapOn);
+  hz.querySelector(".zbg").style.transform = `scale(${0.4 + 0.6 * zapOn})`;
+  hz.style.color = rgb(mixc(hex("#a1a1aa"), hex("#b45309"), zapOn));
+  hz.style.transform = `scale(${1 - 0.12 * press(t, bt(7, 2))})`;
+  bills.querySelector("#schedBtn").style.background = rgb(mixc(hex("#fafafa"), hex("#f4f4f5"), press(t, bt(6, 1))), 1 - (1 - press(t, bt(6, 1))));
+
+  // ── Schedules dialog: grows out of its button ──
+  const svv = vis(t, W.sched, SP, FAST);
+  const sb = M.schedBtn, sf = [180, 256, 920, 527];
+  const sr = [mix(sb.x, sf[0], svv), mix(sb.y, sf[1], svv), mix(sb.w, sf[2], svv), mix(sb.h, sf[3], svv), mix(8, 14, svv)];
+  schedM.set(sr);
+  schedM.outer.style.visibility = svv < 0.01 ? "hidden" : "visible";
+  schedM.outer.style.opacity = clamp(svv * 3).toFixed(3);
+  schedDim.style.opacity = svv.toFixed(3); schedDim.style.visibility = svv < 0.01 ? "hidden" : "visible";
+  schedCards.forEach((c, i) => fx(c, vis(t, [[bt(6, 3) - 0.15 + i * 0.055, bt(6, 4)]]), { blur: 5, dy: 10 }));
+
+  // ── Home Meter row → Electricity meters card ──
+  const pv = clamp(S(t - bt(7, 3), SP));
+  const pr0 = { x: M.homeRow.x, y: M.homeRow.y + DETAILH, w: M.homeRow.w, h: ROWH }, pr1 = M.metersCard;
+  proxy.set([mix(pr0.x, pr1.x, pv), mix(pr0.y, pr1.y - M.sheetScroll, pv), mix(pr0.w, pr1.w, pv), mix(pr0.h, Math.min(pr1.h, 1040 - 58), pv), mix(6, 12, pv)]);
+  fx(proxy.outer, vis(t, [[bt(7, 3) - 0.02, bt(7, 3) + 0.42]], SNAP, SP), { blur: 0 });
+
+  // ── Start card → Meter readings card ──
+  fx(startCard, vis(t, W.startCard), { blur: 4 });
+  fx(readCard, vis(t, W.readCard), { blur: 4 });
+  const reading = vis(t, [[bt(9, 1), bt(9, 4, 0.7)]], SNAP);
+  const readDone = vis(t, [[bt(9, 4, 0.7), T + bt(7, 3)]], SNAP);
+  fx(readCard.querySelector("#rb0"), 1 - reading - readDone, { blur: 3 }); fx(readCard.querySelector("#rb1"), reading, { blur: 3 }); fx(readCard.querySelector("#rb2"), readDone, { blur: 3 });
+  readCard.querySelector("#readBtn").style.opacity = (1 - 0.45 * readDone).toFixed(3);
+  readCard.querySelector("#readBtn").style.transform = `scale(${1 - 0.04 * press(t, bt(9, 1))})`;
+  readCard.querySelector(".spinner").style.transform = `rotate(${(t * 514) % 360}deg)`;
+  footer.querySelector(".spinner").style.transform = `rotate(${(t * 514) % 360}deg)`;
+  // when each row's reading lands: rows 1–9 cascade before 9.2, Oct #1 on 9.2/9.3/9.4, the glare photo after
+  const landAt = (i) => i < R_OCT ? bt(9, 1, 0.35) + i * 0.045 : i < R_GLARE ? bt(9, 2 + i - R_OCT) + 0.22 : bt(9, 4, 0.55);
+  const fixed = vis(t, [[bt(10, 3, 0.75), T + bt(7, 3)]], SNAP), ignored = vis(t, [[bt(10, 4, 0.55), T + bt(7, 3)]], SNAP);
+  const dated = vis(t, [[bt(11, 3), T + bt(7, 3)]], SP);
+  rrows.forEach((r, i) => {
+    const got = vis(t, [[landAt(i), T + bt(7, 3)]], FAST);
+    if (r.taken.length === 2) { fx(r.taken[0], 1 - dated, { blur: 4 }); fx(r.taken[1], vis(t, [[bt(11, 3) + 0.06, T + bt(7, 3)]], SP), { blur: 4, dy: -6 }); }
+    const ign = i === R_GLARE ? ignored : 0;
+    fx(r.shows[0], 1 - got, { blur: 3 }); fx(r.shows[1], got - ign, { blur: 3 }); if (r.shows[2]) fx(r.shows[2], ign, { blur: 3 });
+    const fx7 = i === R_SEP ? vis(t, [[bt(10, 2, 0.6), T + bt(7, 3)]], SNAP) : 0; // the field being edited
+    fx(r.kwh[0], 1 - got, { blur: 3 }); fx(r.kwh[1], got - fx7 - ign, { blur: 3 });
+    if (i === R_SEP) {
+      fx(r.kwh[2], fx7, { blur: 0 });
+      const n = KEYS.slice(8, 12).filter((k) => t >= k).length + (t >= bt(10, 3) - 0.01 ? 1 : 0);
+      r.typed.textContent = t < bt(10, 2, 0.6) ? "" : t < bt(10, 3) - 0.01 ? "7864.00" : "78.64".slice(0, Math.min(5, n + (n >= 3 ? 1 : 0)));
+      r.kwh[2].style.boxShadow = t > bt(10, 3, 0.75) ? "none" : "0 0 0 2px #e4e4e7";
+      r.kwh[2].style.borderColor = t > bt(10, 3, 0.75) ? "var(--input)" : "var(--ring)";
+      r.kwh[2].querySelector(".typed").style.background = t >= bt(10, 2, 0.6) && t < bt(10, 3) - 0.01 ? "#bfdbfe00" : "none";
+    }
+    if (i === R_GLARE) fx(r.kwh[2], ign, { blur: 3 });
+    const isFix = i === R_SEP ? fixed : i === R_GLARE ? ignored : 0;
+    fx(r.by[0], 1 - got, { blur: 3 });
+    if (r.by.length === 3) { fx(r.by[1], got - isFix, { blur: 3 }); fx(r.by[2], isFix, { blur: 3 }); } else fx(r.by[1], got, { blur: 3 });
+    fx(r.ai[0], 1 - got, { blur: 3 }); fx(r.ai[1], got, { blur: 3 });
+    const [, , , , , tin, tout] = READINGS[i];
+    const tick = clamp(S(t - landAt(i), SOFT));
+    r.tok.textContent = got < 0.01 ? "" : `${fmtInt(tin * tick)} / ${Math.round(tout * tick)} / 0`;
+    r.file.style.textDecoration = i === R_SEP && Math.abs(t - bt(10, 1)) < 0.25 ? "underline" : "none";
+    r.tr.style.transform = "";
+  });
+  fx(readCard.querySelector("#ms0"), 1 - readDone, { blur: 3 });
+  fx(readCard.querySelector("#ms1"), readDone - dated, { blur: 3 });
+  fx(readCard.querySelector("#ms2"), dated, { blur: 3 });
+  fx(readCard.querySelector("#dn0"), 1 - dated, { blur: 3 }); fx(readCard.querySelector("#dn1"), dated, { blur: 3 });
+  fx(readCard.querySelector("#prob"), readDone - fixed, { blur: 3 });
+
+  // Photo tiles (9.2–9.4)
+  tiles.forEach((tl, i) => {
+    const ta = bt(9, 2 + i);
+    const v = vis(t, [[ta - 0.06, W.tiles[0][1]]], SP, FAST);
+    tl.e.style.left = (170 + i * 320) + "px"; tl.e.style.top = "330px";
+    fx(tl.e, v, { blur: 8, dy: 24, scale: 0.08 });
+    if (v > 0.003) setLCD(tl.lcd, TILES[i][1], t, ta + 0.05);
+  });
+  // Photo viewer: grows out of the file name
+  const pvv = vis(t, W.photo, SP, FAST);
+  const fr = M.rr[R_SEP].file, pf = [90, 60, 1100, 920];
+  photoM.set([mix(fr.x, pf[0], pvv), mix(fr.y, pf[1], pvv), mix(fr.w * 0.5, pf[2], pvv), mix(fr.h, pf[3], pvv), mix(6, 14, pvv)]);
+  photoM.outer.style.visibility = pvv < 0.01 ? "hidden" : "visible";
+  photoM.outer.style.opacity = clamp(pvv * 3).toFixed(3);
+  photoDim.style.opacity = pvv.toFixed(3); photoDim.style.visibility = pvv < 0.01 ? "hidden" : "visible";
+  fx(photoBody, clamp(pvv * 1.4 - 0.4), { blur: 6 });
+  if (pvv > 0.01) setLCD(lcdBig, "078.64", t, -1);
+  // Menus
+  const menuAt = (m, anchor, sel, wins, path, chosen) => {
+    const v = vis(t, wins, SNAP, FAST);
+    m.e.style.left = (anchor.x + (anchor.w - m.e.offsetWidth) / 2) + "px";
+    m.e.style.top = (anchor.cy - 4 - 13 - sel * 26) + "px";
+    fx(m.e, v, { blur: 0, scale: 0.03 });
+    m.e.style.transformOrigin = `50% ${4 + 13 + sel * 26}px`;
+    if (v < 0.003) return;
+    // highlight: two edges on two springs, the leading one faster
+    const top = track(path.map(([tt, idx], j) => [tt, idx * 26, j && idx > path[j - 1][1] ? SP : FAST]))(t);
+    const bot = track(path.map(([tt, idx], j) => [tt, idx * 26 + 26, j && idx > path[j - 1][1] ? FAST : SP]))(t);
+    m.hl.style.top = 4 + top + "px"; m.hl.style.height = Math.max(0, bot - top) + "px";
+    m.checks.forEach((c, j) => (c.textContent = j === (t >= chosen[0] ? chosen[1] : sel) ? "✓" : ""));
+  };
+  const sheetOff = { dy: -scroll };
+  menuAt(mIns, M.insSel, 0, [[bt(4, 2), bt(4, 3) + 0.08]], [[0, 0], [bt(4, 2, 0.4), 1]], [bt(4, 3), 1]);
+  const gymS = { ...M.gymSel };
+  menuAt(mGym, gymS, 0, [[bt(5, 1), bt(5, 1, 0.55) + 0.06]], [[0, 0], [bt(5, 1, 0.22), 2]], [bt(5, 1, 0.55), 2]);
+  menuAt(mEvery, M.gymEvery, 1, [[bt(5, 2), bt(5, 2, 0.55) + 0.06]], [[0, 1], [bt(5, 2, 0.22), 0]], [bt(5, 2, 0.55), 0]);
+  menuAt(mUntil, M.gymUntil, 11, [[bt(5, 3), bt(5, 4) + 0.06]], [[0, 11], [bt(5, 3, 0.3), 4]], [bt(5, 4), 4]);
+  menuAt(mReader, { ...M.readerSel, y: M.readerSel.y - scroll, cy: M.readerSel.cy - scroll }, 0, [[bt(8, 1), bt(8, 2) + 0.06]], [[0, 0], [bt(8, 1, 0.3), 1]], [bt(8, 2), 1]);
+  menuAt(mShows, M.rr[R_GLARE].shows, 0, [[bt(10, 4), bt(10, 4, 0.55) + 0.06]], [[0, 0], [bt(10, 4, 0.25), 2]], [bt(10, 4, 0.55), 2]);
+  // menus live in the window: the meters one moves with the sheet
+  mReader.e.style.transform += ` translateX(${((1 - sv) * 470).toFixed(1)}px)`;
+
+  // Payment screenshot and its date (bar 11)
+  const pyv = vis(t, W.pay, SP, FAST);
+  payShot.style.left = M.pay.x + "px"; payShot.style.top = M.pay.y + "px";
+  fx(payShot, pyv, { blur: 8, dy: 30, scale: 0.05 });
+  const lift = clamp(S(t - bt(11, 2), SP)), land = clamp(S(t - bt(11, 2, 0.5), SP));
+  const fd = vis(t, [[bt(11, 2), bt(11, 3) + 0.05]], FAST, SNAP);
+  const tx0 = M.payDate.x - 10, ty0 = M.payDate.y - 7, tr = M.rr[R_SEP].taken;
+  flyDate.style.left = mix(tx0, tr.x - 6, land) + "px";
+  flyDate.style.top = (mix(ty0 - 18 * lift, tr.y - 6, land)) + "px";
+  fx(flyDate, fd, { blur: 0, scale: 0 });
+  flyDate.style.transform = `scale(${1 + 0.08 * lift * (1 - land)})`;
+
+  // ── Anatomy (bar 3) ──
+  const sp = clamp(S(t - bt(3, 2), SP)), up = clamp(S(t - bt(3, 3), SP));
+  const gaps = [0, 1, 1, 1, 0.35].map((g) => g * 28 * sp);
+  const ch = 26.4; // mono 44px advance
+  const widths = SEGS.map(([s]) => s.length * ch);
+  const spaceW = ch;
+  let total = widths.reduce((a, b) => a + b, 0) + spaceW * 3 + gaps.reduce((a, b) => a + b, 0);
+  let x = 640 - total / 2;
+  const y0 = mix(520, 432, up) - 22 - 18 * sp * (1 - up);
+  segEls.forEach((s, i) => {
+    if (i > 0) x += (i < 4 ? spaceW : 0) + gaps[i];
+    s.e.style.left = x + "px"; s.e.style.top = y0 + "px";
+    s.e.style.background = sp > 0.02 && i < 4 ? rgb(hex("#f4f4f5"), sp) : "transparent";
+    s.e.style.borderRadius = "8px"; s.e.style.padding = "0";
+    s.e.style.color = i === 4 ? "#a1a1aa" : "#09090b";
+    s.l.style.left = x + widths[i] / 2 + "px"; s.l.style.top = (y0 + 60) + "px";
+    fx(s.l, sp, { blur: 4, dy: -8 });
+    x += widths[i];
+  });
+  fx(anatRows[0], vis(t, [[bt(3, 3) + 0.05, bt(4, 1)]]), { blur: 5, dy: 12 });
+  fx(anatRows[1], vis(t, [[bt(3, 4) + 0.05, bt(4, 1)]]), { blur: 5, dy: 12 });
+  anatRows[0].querySelector("#hl1").style.background = rgb(hex("#e4e4e7"), vis(t, [[bt(3, 3, 0.35), bt(4, 1)]]));
+  anatRows[1].querySelectorAll(".hl2").forEach((e) => (e.style.background = rgb(hex("#e4e4e7"), vis(t, [[bt(3, 4, 0.35), bt(4, 1)]]))));
+
+  // ── Page 1 (13.x, 16.1) ──
+  const k1v = (i) => vis(t, [[bt(12, 4) + 0.05 + i * 0.07, T]]);
+  [...page1.querySelectorAll(".p1kpi")].forEach((e, i) => fx(e, i < 1 ? vis(t, [[bt(12, 4), T]]) : k1v(i - 1), { blur: 5, dy: 10 }));
+  page1.querySelector("#paidBar").style.width = 21.4 * clamp(S(t - bt(13, 1) - 0.1, SP)) + "%";
+  page1.querySelector("#covBar").style.width = 97 * clamp(S(t - bt(13, 1) - 0.2, SP)) + "%";
+  [...page1.querySelectorAll("#chartBars .bar")].forEach((e, i) => (e.style.transform = `scaleY(${clamp(S(t - bt(13, 2) - i * 0.035, SP), 0, 1.02)})`));
+  [...page1.querySelectorAll("#chartBars .bv")].forEach((e, i) => fx(e, vis(t, [[bt(13, 3) + i * 0.03, T]]), { blur: 3, dy: 6 }));
+  [...page1.querySelectorAll("#dueChips .chipy")].forEach((e, i) => fx(e, vis(t, [[bt(13, 4) - 0.1 + i * 0.03, T]]), { blur: 4, dy: 6 }));
+  [...page1.querySelectorAll("#missList > div")].forEach((e, i) => fx(e, vis(t, [[bt(13, 4) + 0.15 + i * 0.05, T]]), { blur: 4, dy: 6 }));
+  [...page1.querySelectorAll(".hkline")].forEach((e, i) => {
+    const v = i === 2 ? vis(t, [[bt(16, 1) + 0.25, T]], SP) : 1;
+    fx(e, v, { blur: 4, tx: (1 - v) * 40 });
+    e.style.background = i === 2 ? rgb(hex("#fef3c7"), vis(t, [[bt(16, 1) + 0.35, T]]) * 0.9) : "transparent";
+    e.style.borderRadius = "4px"; e.style.padding = "0 4px"; e.style.marginLeft = "-4px";
+  });
+  // ── Page 2: the matrix fills ──
+  mxEls.forEach((c) => {
+    const ta = c.kind === "check" ? bt(14, 2) - 0.25 + c.m * 0.04 + (c.y - 158) * 0.0006 : c.kind === "dot" ? bt(14, 1) + 0.1 : bt(14, 3) + (c.kind === "miss" ? 0.12 : 0) + (c.y - 158) * 0.0008;
+    const v = vis(t, [[ta, T]], FAST);
+    fx(c.el, v, { blur: 0, scale: 0.6 });
+  });
+  // ── Page 4 ──
+  [...page4.querySelectorAll(".p4kpi")].forEach((e, i) => fx(e, vis(t, [[bt(15, 1) + 0.05 + i * 0.07, T]]), { blur: 5, dy: 10 }));
+  [...page4.querySelectorAll(".cbar")].forEach((e, i) => (e.style.transform = `scaleX(${clamp(S(t - bt(15, 1) - 0.25 - i * 0.05, SP))})`, e.style.transformOrigin = "0 50%"));
+  const rowHL = vis(t, [[bt(15, 2), T]]);
+  const cyc4 = page4.querySelectorAll(".cyc")[3];
+  cyc4.style.background = rgb(hex("#f4f4f5"), rowHL);
+  fx(page4.querySelector("#formula"), vis(t, [[bt(15, 2) + 0.12, T]]), { blur: 6, dy: 14 });
+  [...page4.querySelectorAll(".tdot")].forEach((e, i) => fx(e, vis(t, [[bt(15, 3) + i * 0.06, T]], FAST), { blur: 0, scale: 1 }));
+  [...page4.querySelectorAll(".nt")].forEach((e, i) => fx(e, vis(t, [[bt(15, 2) + 0.3 + i * 0.05, T]]), { blur: 4, dy: 6 }));
+  // ── Page 5 ──
+  [...page5.querySelectorAll(".tur")].forEach((e, i) => (e.style.background = i === 2 ? rgb(mixc(hex("#ffffff"), hex("#fef3c7"), 0.55 * vis(t, [[bt(15, 4) + 0.2, T]]))) : ""));
+
+  // ── Keycaps ──
+  KEYCAPS.forEach(([tk, i]) => {
+    const v = vis(t, [[tk - 0.18, tk + 0.42]], FAST, FAST);
+    const g = keycaps[i];
+    g.style.left = (720 - 80) + "px"; g.style.top = (1270 + (1 - v) * 30) + "px";
+    fx(g, v, { blur: 0 });
+    const p = press(t, tk);
+    [...g.children].forEach((k) => { k.style.transform = `translateY(${p * 3}px)`; k.style.borderBottomWidth = (4 - p * 3) + "px"; });
+  });
+
+  // ── Cursor ──
+  const [wx, wy] = cur(t);
+  const [sx, sy] = toScreen(wx, wy);
+  const pr = CLICKS.reduce((a, tc) => a + press(t, tc), 0) + press(t, bt(7, 2));
+  cursor.style.transform = `translate(${(sx - 4).toFixed(2)}px, ${(sy - 3).toFixed(2)}px) scale(${(1 - 0.16 * clamp(pr)).toFixed(4)})`;
+}
+
+window.seek = seek;
+window.T = T;
+window.B = B;
+window.ready = document.fonts.ready.then(() => { seek(0); return true; });
+if (!/render/.test(location.search)) { // open the file in a browser to watch it
+  const t0 = performance.now();
+  const loop = () => { seek(((performance.now() - t0) / 1000) % T); requestAnimationFrame(loop); };
+  window.ready.then(() => requestAnimationFrame(loop));
+}
+</script>
+</body>
+</html>

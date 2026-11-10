@@ -23,6 +23,7 @@ import { detectYear, selfName } from "./locate";
 import { LOGS_FOLDER } from "./ailog";
 import type { InstanceLock } from "./lock";
 import { aiTotals, editReading, electricity, meterPhotos, ReadingStore, READINGS_NAME, validateMeters, type Electricity, type MeterSettings } from "./meters";
+import { viewablePhoto } from "./photo";
 import { chooseFolder, isWin, openAppWindow, openFile, openPrivacySettings, revealFile, showAlert, writeLog } from "./platform";
 import { isProvider, keyStatus, mergeKeys, PROVIDERS, type PendingKeys } from "./reader";
 import { scanDirectory } from "./scan";
@@ -170,6 +171,26 @@ export async function runSettingsWindow(opts: WindowOptions): Promise<void> {
           } finally {
             busy = false;
           }
+        }
+
+        case "GET /api/meters/photo": {
+          // A meter photo for the window's viewer: only photo files inside the bills folder
+          const folder = url.searchParams.get("folder")?.trim() || DEFAULT_FOLDER;
+          const file = url.searchParams.get("file") ?? "";
+          const dir = resolveFolder(opts.appDir, folder);
+          const abs = path.resolve(dir, file);
+          const rel = path.relative(dir, abs);
+          const ext = path.extname(abs).slice(1).toLowerCase();
+          if (!file || rel.startsWith("..") || path.isAbsolute(rel) || !["jpg", "jpeg", "png", "heic"].includes(ext)) return send(res, 400, "Not a photo in the bills folder.");
+          let buf: Buffer;
+          try {
+            buf = await fs.promises.readFile(abs);
+          } catch {
+            return send(res, 404, "That photo isn't in the bills folder any more.");
+          }
+          const { body, type } = await viewablePhoto(buf, ext);
+          res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" });
+          return res.end(body);
         }
 
         case "GET /api/preview":
@@ -358,18 +379,26 @@ function forWindow(e: Electricity) {
     meters: e.usages.map((u) => ({
       meter: u.meter,
       totalUsed: u.totalUsed,
-      coveredDays: u.coveredDays,
-      perDay: u.perDay,
+      cycles: u.cycles,
+      perDay: u.rate?.perDay ?? null,
+      rateDays: u.rate?.days ?? null,
+      nextTopUp: u.frequency.next?.toISOString() ?? null,
       totalToppedUp: u.totalToppedUp,
+      spent: u.spent,
+      spentUnknown: u.spentUnknown,
+      topUps: u.frequency.count,
       balance: u.balance && { kwh: u.balance.kwh, at: u.balance.at.toISOString() },
       runsOut: u.runsOut?.toISOString() ?? null,
       unread: u.unread,
-      ai: aiTotals(u.photos.map((p) => p.reading)),
-      problems: u.periods.filter((p) => p.problem).map((p) => ({ from: p.from.toISOString(), to: p.to.toISOString(), problem: p.problem })),
+      /** Payment files still to read: for the amount paid, a date or the kWh bought. */
+      unreadPayments: e.paymentsUnread.filter((q) => q.meter === u.meter).length,
+      ai: aiTotals([...u.photos.map((p) => p.reading), ...e.payments.filter((q) => q.meter === u.meter).map((q) => q.reading)]),
+      problems: u.events.filter((e) => e.problem).map((e) => ({ at: e.at.toISOString(), estimated: e.estimated, problem: e.problem })),
       photos: u.photos.map((p) => ({
         file: p.file,
         takenAt: p.takenAt.toISOString(),
         dateSource: p.dateSource,
+        paymentFile: p.paymentFile,
         label: p.label,
         reading: p.reading && {
           kind: kindOf(p) ?? p.reading.kind, // what the numbers use: your correction, else the file's label

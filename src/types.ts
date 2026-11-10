@@ -1,7 +1,7 @@
 /** A file in the year folder that matched `YYYYMM Name.ext`. */
 export interface BillFile {
   file: string;
-  /** The bill: the name before "#N", a document number or "Photo" ("Klaska PLN #2 Before" → "Klaska PLN", "PBB Klaska 1 SPPT" → "PBB Klaska"). */
+  /** The bill: the name before "#N", a document number or "Photo" ("Home Meter #2 Before" → "Home Meter", "Property Tax 1 Assessment" → "Property Tax"). */
   name: string;
   /** Everything after YYYYMM, as written. */
   fullName: string;
