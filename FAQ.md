@@ -95,6 +95,8 @@ One `#` per top-up, then what the photo shows:
 202610 Klaska PLN #2 Before.jpg     a second top-up the same month
 ```
 
+**Only photos named `Before`, `Input` or `After` are meter photos.** That word also tells the app what the photo shows: `Before` and `After` are the credit left, `Input` is the kWh just added. Any other file of the meter's bill, such as `Klaska PLN #1 Payment.jpg` or a receipt PDF, is left out: it isn't listed under *Meter readings*, isn't sent to the AI reader and isn't counted.
+
 Keep the original photos: the time each one was taken is read from the photo itself, and screenshots or copies sent through a chat app lose it. The settings window shows these example names for the current month and your meter under **Electricity meters**. See [Electricity meters](README.md#electricity-meters) in the README.
 
 ### Two different bills end up as one
@@ -122,14 +124,18 @@ Only two things, nothing else: uppercase extensions are lowercased (`IMG.JPG` �
 
 ### I used the old `01 Photo 1` names
 
-Older versions counted any number after the name as a payment, so meter photos were named like `Klaska PLN 01 Photo 1 Before.jpg`. Those files are still the bill *Klaska PLN*, but a plain `01` no longer counts as a payment. If you want a month with two top-ups to show **2**, rename them with `#`:
+Older versions counted any number after the name as a payment, and named the meter photos `Photo 1 Before`, `Photo 2 Topup` and `Photo 3 After`. Rename them like this:
 
 ```
 202610 Klaska PLN 01 Photo 1 Before.jpg   →   202610 Klaska PLN #1 Before.jpg
+202610 Klaska PLN 01 Photo 2 Topup.jpg    →   202610 Klaska PLN #1 Input.jpg
+202610 Klaska PLN 01 Photo 3 After.jpg    →   202610 Klaska PLN #1 After.jpg
 202610 Klaska PLN 02 Photo 1 Before.jpg   →   202610 Klaska PLN #2 Before.jpg
 ```
 
-Meter readings aren't affected either way: the app tells top-ups apart by the times the photos were taken, and a renamed photo keeps its reading (it isn't sent to the AI reader again).
+- **`Topup` must become `Input`.** A photo without `Before`, `Input` or `After` in its name is no longer a meter photo, so until it's renamed that top-up's amount is missing (the app works it out from the before and after photos where it can).
+- **`01` must become `#1`** if you want a month with two top-ups to show **2** in the bill list and the matrix. A plain `01` no longer counts as a payment. The Electricity pages aren't affected: they tell top-ups apart by the times the photos were taken.
+- A renamed photo keeps its reading and isn't sent to the AI reader again; the app recognises it by its content.
 
 ## Using the app
 
@@ -167,9 +173,17 @@ You need an **API key** with credit from Anthropic (Claude) or OpenAI (ChatGPT);
 
 About $0.0003 a photo with the suggested `claude-haiku-5-5`. Each photo is read once, and the window and the report show the tokens and cost of every reading.
 
+### Which photos are sent to the AI?
+
+Only photos of ⚡ bills whose names contain `Before`, `Input` or `After`, each once, scaled down. Nothing else from the folder is ever sent: not other bills, not PDFs, not other photos of the meter's bill (`Payment`, `Receipt`, `Check`, …). Every request is recorded in the `logs` folder next to the app, so you can see exactly which photos went out.
+
+### A meter photo isn't listed under *Meter readings*
+
+Its name has no `Before`, `Input` or `After`, so it isn't treated as a meter photo (see [How do I name electricity meter photos?](#how-do-i-name-electricity-meter-photos)). Rename it, and it shows up and can be read. Also check that the ⚡ is on for the bill it belongs to.
+
 ### A photo was read wrong
 
-Fix the value in the *Meter readings* table of the settings window, or set it to *Ignore*, then generate again.
+Fix the value in the *Meter readings* table of the settings window, or set it to *Ignore*, then generate again. What a photo shows (credit left or kWh added) comes from its name; if that's wrong, fix the name, or pick the right one in the table.
 
 ## Privacy
 
@@ -177,7 +191,7 @@ Fix the value in the *Meter readings* table of the settings window, or set it to
 
 No. The app works on the folder on your computer, has no analytics and doesn't check for updates. The links in the window's footer only open pages in your browser.
 
-The one exception is opt-in: with an AI reader turned on, the photos of ⚡ bills (and only those) are sent to the provider you picked. See [what's sent, and what's kept where](README.md#electricity-meters).
+The one exception is opt-in: with an AI reader turned on, the photos of ⚡ bills named `Before`, `Input` or `After` (and only those) are sent to the provider you picked. See [what's sent, and what's kept where](README.md#electricity-meters).
 
 ### Is my API key safe?
 

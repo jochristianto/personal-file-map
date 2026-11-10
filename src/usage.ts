@@ -99,6 +99,17 @@ export interface MeterUsage {
   estimatedDates: number;
 }
 
+/**
+ * What a photo shows, as used for the numbers: your correction wins, then "other" (unreadable), then the
+ * file's label (Before / After = credit left, Input = kWh added), then what the AI reader said.
+ */
+export function kindOf(p: MeterPhoto): "balance" | "topup" | "other" | null {
+  const r = p.reading;
+  if (!r) return null;
+  if (r.edited || r.kind === "other") return r.kind;
+  return p.label === "input" ? "topup" : "balance";
+}
+
 const SHORT_HOURS = 6;
 const TOLERANCE = 0.5; // kWh: rounding and a few minutes of use between photos
 
@@ -116,8 +127,9 @@ export function meterUsage(meter: string, photos: MeterPhoto[], year: number): M
 
   for (const p of photos) {
     const r = p.reading;
-    if (!r || r.kind === "other") continue;
-    if (r.kind === "topup") {
+    const kind = kindOf(p);
+    if (!r || kind === "other") continue;
+    if (kind === "topup") {
       addTopUp({ at: p.takenAt, kwh: r.kwh, file: p.file, inferred: false });
       continue;
     }
@@ -225,7 +237,7 @@ const DAY = 86_400_000;
 
 /** Groups the photos into top-ups: before / amount / after photos taken within SHORT_HOURS of each other. */
 function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
-  const readings = photos.filter((p) => p.reading && p.reading.kind !== "other");
+  const readings = photos.filter((p) => p.reading && kindOf(p) !== "other");
   const clusters: MeterPhoto[][] = [];
   for (const p of readings) {
     const cur = clusters[clusters.length - 1];
@@ -241,7 +253,7 @@ function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
     const tops: MeterPhoto[] = [];
     for (const p of c) {
       // A meter screen and a receipt of the same top-up: count it once
-      if (p.reading!.kind === "topup" && !tops.some((t) => Math.abs(kwhOf(t) - kwhOf(p)) < 0.05)) tops.push(p);
+      if (kindOf(p) === "topup" && !tops.some((t) => Math.abs(kwhOf(t) - kwhOf(p)) < 0.05)) tops.push(p);
     }
     let before: MeterPhoto | undefined;
     let after: MeterPhoto | undefined;
@@ -250,12 +262,12 @@ function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
     if (tops.length > 0) {
       const first = c.indexOf(tops[0]);
       const lastTop = c.indexOf(tops[tops.length - 1]);
-      before = c.slice(0, first).filter((p) => p.reading!.kind === "balance").pop();
-      after = c.slice(lastTop + 1).find((p) => p.reading!.kind === "balance");
+      before = c.slice(0, first).filter((p) => kindOf(p) === "balance").pop();
+      after = c.slice(lastTop + 1).find((p) => kindOf(p) === "balance");
       amount = tops.reduce((n, t) => n + kwhOf(t), 0);
     } else {
       // No photo of the amount: the biggest rise between two balance photos is the top-up
-      const bals = c.filter((p) => p.reading!.kind === "balance");
+      const bals = c.filter((p) => kindOf(p) === "balance");
       let best = -1;
       for (let i = 0; i + 1 < bals.length; i++) {
         const rise = kwhOf(bals[i + 1]) - kwhOf(bals[i]);

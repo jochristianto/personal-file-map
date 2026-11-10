@@ -6,7 +6,7 @@ import interBold from "@fontsource/inter/files/inter-latin-700-normal.woff";
 import { usd } from "./ailog";
 import { aiTotals, type Electricity } from "./meters";
 import type { BillRow, CellState, Report } from "./types";
-import type { MeterUsage } from "./usage";
+import { kindOf, type MeterUsage } from "./usage";
 
 // ── Design tokens (shadcn/ui "zinc" theme) ───────────────────────────────────
 const C = {
@@ -1133,11 +1133,12 @@ function drawReadingsPage(r: Painter, rep: Report, e: Electricity, u: MeterUsage
     if (!rd) {
       r.pill("Not read", col.kind, cy, { fg: C.amberText, bg: C.amberBg, size: 6.6, h: 11.5 });
     } else {
-      const label = rd.kind === "balance" ? "Balance" : rd.kind === "topup" ? "Top-up" : "Ignored";
-      const tone = rd.kind === "topup" ? { fg: C.greenText, bg: C.greenBg } : { fg: C.muted, bg: C.mutedBg };
+      const kind = kindOf(p) ?? rd.kind;
+      const label = kind === "balance" ? "Balance" : kind === "topup" ? "Top-up" : "Ignored";
+      const tone = kind === "topup" ? { fg: C.greenText, bg: C.greenBg } : { fg: C.muted, bg: C.mutedBg };
       r.pill(label, col.kind, cy, { ...tone, size: 6.6, h: 11.5 });
       if (rd.code) r.text(rd.code, col.code, cy, { size: 7.5, color: C.muted });
-      if (rd.kind !== "other") r.text(kwh(rd.kwh, 2), col.kwh, cy, { size: 7.8, weight: "semibold", align: "right" });
+      if (kind !== "other") r.text(kwh(rd.kwh, 2), col.kwh, cy, { size: 7.8, weight: "semibold", align: "right" });
       const by = rd.edited ? "corrected by hand" : rd.by.split("/").pop() ?? rd.by;
       const flag = !rd.edited && rd.confidence !== "high" ? ` · ${rd.confidence} confidence` : "";
       const extra = rd.note ? ` · ${rd.note}` : "";

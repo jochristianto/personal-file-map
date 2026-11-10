@@ -25,6 +25,7 @@ import { aiTotals, editReading, electricity, meterPhotos, ReadingStore, READINGS
 import { chooseFolder, isWin, openAppWindow, openFile, openPrivacySettings, revealFile, showAlert, writeLog } from "./platform";
 import { isProvider, keyStatus, mergeKeys, PROVIDERS, type PendingKeys } from "./reader";
 import { scanDirectory } from "./scan";
+import { kindOf } from "./usage";
 import page from "./window.html";
 import { version as APP_VERSION } from "../package.json";
 
@@ -359,8 +360,9 @@ function forWindow(e: Electricity) {
         file: p.file,
         takenAt: p.takenAt.toISOString(),
         dateSource: p.dateSource,
+        label: p.label,
         reading: p.reading && {
-          kind: p.reading.kind,
+          kind: kindOf(p) ?? p.reading.kind, // what the numbers use: your correction, else the file's label
           kwh: p.reading.kwh,
           code: p.reading.code,
           confidence: p.reading.confidence,

@@ -129,7 +129,7 @@ The time each photo was taken comes from the photo itself (its EXIF capture date
 
 **Setting it up** in the settings window:
 
-1. Click ⚡ next to the meter's bill (e.g. `Klaska PLN`). Each ⚡ bill is one meter; its JPG, PNG and HEIC files are its photos.
+1. Click ⚡ next to the meter's bill (e.g. `Klaska PLN`). Each ⚡ bill is one meter. Its photos (JPG, PNG or HEIC) named **Before**, **Input** or **After** are the meter photos; any other file of that bill, such as `Klaska PLN #1 Payment.jpg` or a receipt PDF, is left out: not listed, not sent to the AI, not counted.
 2. Under **Electricity meters**, pick an **AI reader**: *Claude (Anthropic)* or *ChatGPT (OpenAI)*, and a **model**. The suggested ones are the cheap models (`claude-haiku-5-5`, `gpt-5.4-mini`); you can type any other model id that can read images.
 3. Paste an **API key** for that provider and click **Save**. *Create a key* opens the provider's key page. You need an account with API credit there; a ChatGPT or Claude subscription alone doesn't include API access. The key works right away; to keep it, click **Save** at the bottom of the window (or generate the report), which writes it to `config.local.json` with the other settings.
 4. **Read new photos** reads every photo that has no reading yet and lists what it saw, with the tokens each reading used and what it cost. Check the values against the photos; a wrong digit can be fixed right in the table (or the photo marked *Ignore*). **Generate report** also reads new photos before writing the PDF.
@@ -146,7 +146,7 @@ The card shows example file names for the current month and your meter, e.g. `20
 
 | What | Where |
 |---|---|
-| The photos of ⚡ bills, scaled down to 1600 px, plus their file name | to the provider you picked, only while a reader is chosen; nothing else from the folder. OpenAI requests are sent with `store: false`. |
+| The photos of ⚡ bills named `Before`, `Input` or `After`, scaled down to 1600 px, plus their file name | to the provider you picked, only while a reader is chosen; nothing else from the folder. OpenAI requests are sent with `store: false`. |
 | The readings (kWh, what the photo shows, which model read it, tokens and cost, your corrections) | `personal-file-map.readings.json` in the bills folder. Edit it by hand if you like: set `"edited": true` on an entry you change. Delete an entry to have that photo read again. A photo whose content changes is read again; a renamed one isn't. |
 | The API keys | in `config.local.json` next to the app, under `"meters"` → `"apiKeys"`, in plain text. **If that folder is synced (Google Drive, iCloud, Dropbox) or shared, the key goes with it**, and anyone who can open the file can use your API credit; keep it private, and remove the key (or revoke it at the provider) before sharing the folder. The settings window never shows a saved key, only its last 4 characters. If none is set, `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` from the environment are used. |
 
@@ -156,7 +156,8 @@ With the reader set to **Off** nothing is sent; readings already saved and value
 
 **How usage is worked out**, per meter:
 
-- Photos are ordered by capture time. A *balance* photo shows the credit left; a *top-up* photo shows kWh just added. The model tells them apart by the screen (on MSP meters the small code is `37` for the balance and `59` for the amount just added) and by receipts.
+- The label in the file name says what a photo shows: **Before** and **After** = the credit left (*balance*), **Input** = the kWh just added (*top-up*). The AI only reads the number. A value you correct in the window, or a photo the AI couldn't read, overrides the label.
+- Photos are ordered by capture time. Photos without one are placed mid-month in the order month, `#1`/`#2`, then Before → Input → After.
 - Used between two balance photos = earlier balance + top-ups in between − later balance. A meter screen and a receipt of the same top-up are counted once.
 - No top-up photo? If the balance went up within a few hours (before/after photos), the difference is taken as the top-up. If it went up over a longer gap, that stretch is shown as unknown instead of guessed; readings that contradict each other are flagged *to check*.
 - Each stretch's usage is spread over the days it covers, which gives kWh per month. The balance at the last photo and the latest daily rate give an estimate of when it runs out.

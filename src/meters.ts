@@ -185,19 +185,38 @@ export interface MeterPhoto {
   /** When it was taken: the photo's EXIF time, else the file's date if it's in the right month, else mid-month (estimated). */
   takenAt: Date;
   dateSource: DateSource;
+  /** "Before" / "Input" / "After" in the file name: what the photo shows (credit left, kWh added, credit left). */
+  label: MeterLabel;
   reading: StoredReading | null;
 }
 
-/** Every photo (not PDF) of a meter bill, oldest first, with what's known about it so far. */
+export type MeterLabel = "before" | "input" | "after";
+const LABEL_ORDER: Record<MeterLabel, number> = { before: 0, input: 1, after: 2 };
+
+/** The Before / Input / After word in a meter photo's name, or null: only labelled photos are meter photos. */
+export function meterLabel(fullName: string): MeterLabel | null {
+  for (const w of fullName.split(" ")) {
+    const l = w.toLowerCase();
+    if (l === "before" || l === "input" || l === "after") return l;
+  }
+  return null;
+}
+
+/**
+ * Photos of a meter bill named "… Before", "… Input" or "… After", oldest first, with what's known about
+ * them so far. Other files of the bill (a payment screenshot, a receipt PDF) are ignored: not listed, not read.
+ */
 export async function meterPhotos(dir: string, year: number, files: BillFile[], meterBills: string[], store: ReadingStore): Promise<MeterPhoto[]> {
   const out: MeterPhoto[] = [];
   const candidates = files
     .filter((f) => PHOTO_EXTENSIONS.has(f.ext))
-    .map((f) => ({ f, meter: matchKey(f.name, meterBills) }))
-    .filter((x): x is { f: BillFile; meter: string } => x.meter !== null)
-    .sort((a, b) => a.f.file.localeCompare(b.f.file, "en", { numeric: true }));
+    .map((f) => ({ f, meter: matchKey(f.name, meterBills), label: meterLabel(f.fullName) }))
+    .filter((x): x is { f: BillFile; meter: string; label: MeterLabel } => x.meter !== null && x.label !== null)
+    // Month, then top-up (#1, #2), then Before → Input → After: the order photos without a capture date get
+    .sort((a, b) => a.f.month - b.f.month || (a.f.txn ?? 0) - (b.f.txn ?? 0) || LABEL_ORDER[a.label] - LABEL_ORDER[b.label] ||
+      a.f.file.localeCompare(b.f.file, "en", { numeric: true }));
 
-  for (const [i, { f, meter }] of candidates.entries()) {
+  for (const [i, { f, meter, label }] of candidates.entries()) {
     const buf = await fs.promises.readFile(path.join(dir, f.file));
     const sha1 = createHash("sha1").update(buf).digest("hex");
     let takenAt = await captureDate(buf);
@@ -205,12 +224,13 @@ export async function meterPhotos(dir: string, year: number, files: BillFile[], 
     if (takenAt && (takenAt.getFullYear() < year - 1 || takenAt.getFullYear() > year + 1)) takenAt = null; // camera clock off
     if (!takenAt) {
       const inMonth = f.mtime.getFullYear() === year && f.mtime.getMonth() + 1 === f.month;
-      takenAt = inMonth ? f.mtime : new Date(year, f.month - 1, 15, 12, 0, i); // keeps file-name order within a month
+      takenAt = inMonth ? f.mtime : new Date(year, f.month - 1, 15, 12, 0, i); // keeps the order above within a month
       dateSource = inMonth ? "file" : "month";
     }
-    out.push({ meter, file: f.file, month: f.month, ext: f.ext, sha1, takenAt, dateSource, reading: store.get(f.file, sha1) });
+    out.push({ meter, file: f.file, month: f.month, ext: f.ext, sha1, takenAt, dateSource, label, reading: store.get(f.file, sha1) });
   }
-  return out.sort((a, b) => a.takenAt.getTime() - b.takenAt.getTime() || a.file.localeCompare(b.file, "en", { numeric: true }));
+  return out.sort((a, b) => a.takenAt.getTime() - b.takenAt.getTime() || LABEL_ORDER[a.label] - LABEL_ORDER[b.label] ||
+    a.file.localeCompare(b.file, "en", { numeric: true }));
 }
 
 export interface ReadResult {

@@ -331,7 +331,7 @@
           </span>
         </div>
         <p class="help">Reads the kWh on photos of a prepaid electricity meter, so the report shows how much you use. Turn on <span class="zap-inline" id="zapHelp"></span> next to the meter's bill (e.g. <code>Klaska PLN</code>) to mark its photos.</p>
-        <div class="note">Name the photos of each top-up like this:</div>
+        <div class="note">Name the photos of each top-up like this. Only photos named <strong>Before</strong>, <strong>Input</strong> or <strong>After</strong> are read; other files of the meter's bill (a payment screenshot, a receipt) are left out.</div>
         <ul class="examples" id="meterExamples"></ul>
         <p class="help" id="meterNaming">The month (<code>YYYYMM</code>), the meter's name, <code>#1</code> for the first top-up that month (<code>#2</code> for a second one), then <code>Before</code>, <code>Input</code> or <code>After</code>. Use the original photos, not screenshots of them: the time each photo was taken is read from the file.</p>
         <div class="field">
@@ -959,7 +959,7 @@ function renderReader() {
     note.replaceChildren("Not set. ", el("button", { type: "button", class: "linkish", onclick: () => api("open", { target: `keys:${p.id}` }) }, "Create a key"),
       " in your account, paste it here and click Save.");
   }
-  $("readerNote").textContent = `Only the photos of ⚡ bills are sent to ${p.label.replace(/^.*\((.*)\)$/, "$1")}, scaled down, once each. The key is saved in config.local.json next to the app: if that folder is synced or shared, the key goes with it.`;
+  $("readerNote").textContent = `Only the Before, Input and After photos of ⚡ bills are sent to ${p.label.replace(/^.*\((.*)\)$/, "$1")}, scaled down, once each. The key is saved in config.local.json next to the app: if that folder is synced or shared, the key goes with it.`;
   renderMeterActions();
 }
 
@@ -1074,7 +1074,7 @@ function renderMeters() {
   }
   if (meterData.meters.length === 0) {
     const ex = $("meterExamples").querySelector("code");
-    box.replaceChildren(el("div", { class: "empty" }, `No photos (JPG, PNG or HEIC) of ${bills.join(", ")} in the bills folder yet. Name them like `, el("code", {}, ex ? ex.textContent : "202611 Klaska PLN #1 Before.jpg"), " (see Electricity meters)."));
+    box.replaceChildren(el("div", { class: "empty" }, `No photos (JPG, PNG or HEIC) of ${bills.join(", ")} named Before, Input or After in the bills folder yet. Name them like `, el("code", {}, ex ? ex.textContent : "202611 Klaska PLN #1 Before.jpg"), " (see Electricity meters)."));
     return;
   }
   box.replaceChildren(...meterData.meters.map((m) => {
