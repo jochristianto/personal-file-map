@@ -44,6 +44,7 @@
   .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
   .sidebar { position: sticky; top: 16px; max-height: calc(100vh - 104px); overflow-y: auto; border-radius: 12px; }
   .sidebar .card:last-child { margin-bottom: 0; }
+  .main-col { min-width: 0; }
   .bills { container-type: inline-size; } /* bill rows adapt to the column, not the window */
   header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
   h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
@@ -55,7 +56,7 @@
   code { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--line); padding: 1px 5px; border-radius: 4px; }
 
   input, select, button { font: inherit; color: inherit; }
-  input[type=text], input[type=number], input[type=search], select {
+  input[type=text], input[type=number], input[type=search], input[type=password], select {
     height: 34px; border: 1px solid var(--input); border-radius: 8px; background: var(--card); padding: 0 10px; min-width: 0;
   }
   select {
@@ -96,16 +97,19 @@
   .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); align-items: center; margin: 0 0 6px; flex-wrap: wrap; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
 
-  .schedules summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
-  .schedules summary::-webkit-details-marker { display: none; }
-  .schedules summary::before {
-    content: ""; width: 14px; height: 14px; flex: none; background: var(--chevron) center / 14px 14px no-repeat;
-    transform: rotate(-90deg); transition: transform .15s;
+  /* "What the schedules mean": a modal dialog */
+  dialog.modal {
+    width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--border);
+    border-radius: 14px; background: var(--card); color: var(--fg); box-shadow: 0 24px 64px rgba(0,0,0,.25);
   }
-  .schedules[open] summary::before { transform: none; }
-  .schedules[open] summary { margin-bottom: 12px; }
-  .schedules > .note { margin: 12px 0 0; }
-  .schedule-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  dialog.modal::backdrop { background: rgba(9, 9, 11, .45); backdrop-filter: blur(2px); }
+  dialog.modal[open] { display: flex; flex-direction: column; animation: pop .14s ease-out; }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.99); } }
+  .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 20px 4px; }
+  .modal-head h2 { font-size: 17px; }
+  .modal-body { padding: 8px 20px 20px; overflow-y: auto; }
+  .modal-body > .note { margin: 14px 0 0; }
+  .schedule-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
   .schedule { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; color: var(--muted); }
   .schedule-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
   .schedule-head strong { color: var(--fg); font-weight: 600; font-size: 13px; }
@@ -166,6 +170,68 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .hidden { display: none !important; }
 
+  /* Loading skeleton: shown until the settings and the folder have loaded */
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+  .sk, body.is-loading .card input, body.is-loading .card select, body.is-loading .card button, body.is-loading #generate {
+    background: linear-gradient(90deg, var(--off) 30%, var(--line) 50%, var(--off) 70%) !important; background-size: 200% 100% !important;
+    animation: shimmer 1.3s linear infinite; border-color: transparent !important; color: transparent !important; border-radius: 8px;
+  }
+  body.is-loading .card input::placeholder { color: transparent; }
+  body.is-loading .card button > * { visibility: hidden; }
+  body.is-loading main, body.is-loading footer .actions { pointer-events: none; }
+  .sk { display: block; height: 12px; border-radius: 6px; }
+  .sk.inline { display: inline-block; vertical-align: middle; }
+  .sk-row { display: grid; gap: 10px; align-items: center; grid-template-columns: minmax(160px, 1fr) 180px 360px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .sk-row .sk { height: 32px; border-radius: 8px; }
+  @container (max-width: 840px) { .sk-row { grid-template-columns: minmax(120px, 1fr) 170px; } .sk-row .sk:nth-child(3) { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .sk, body.is-loading .card input, body.is-loading .card select, body.is-loading .card button { animation: none; } }
+
+  /* Electricity meters */
+  .ai-badge { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px 0 6px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+    color: #7c3aed; background: #f3e8ff; letter-spacing: .02em; }
+  .ai-badge svg { width: 13px; height: 13px; }
+  @media (prefers-color-scheme: dark) { .ai-badge { color: #c4b5fd; background: #2e1065; } }
+  .examples { list-style: none; margin: 6px 0 8px; padding: 10px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); display: grid; gap: 7px; }
+  .examples li { display: grid; gap: 1px; font-size: 12px; color: var(--muted); }
+  .examples code { background: none; padding: 0; font-size: 12px; color: var(--fg); overflow-wrap: anywhere; }
+  table.readings td.ai { white-space: nowrap; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+  table.readings th.num { text-align: right; }
+  button.zap { width: 28px; height: 28px; padding: 0; flex: none; display: inline-grid; place-items: center; border-color: transparent; background: transparent; color: var(--faint); }
+  button.zap svg { width: 15px; height: 15px; }
+  button.zap:hover { background: var(--hover); color: var(--fg); }
+  button.zap.on { background: var(--amber-bg); color: var(--amber); }
+  .zap-inline { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; background: var(--amber-bg); color: var(--amber); vertical-align: -4px; }
+  .zap-inline svg { width: 12px; height: 12px; }
+  .field { display: grid; gap: 6px; margin-bottom: 12px; }
+  .field > label { font-size: 12.5px; font-weight: 500; color: var(--fg2); }
+  .field select, .field input { width: 100%; }
+  .key-row { display: flex; gap: 8px; }
+  .key-row input { flex: 1; } /* same look as the Model field */
+  .linkish { border: 0; background: none; padding: 0; height: auto; color: var(--fg2); text-decoration: underline; font-weight: 500; font-size: inherit; cursor: pointer; }
+  .linkish:hover { background: none; color: var(--fg); }
+  .meter { margin-top: 14px; }
+  .meter:first-child { margin-top: 0; }
+  .meter-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .meter-head h3 { font-size: 14px; font-weight: 600; margin: 0; }
+  .meter-stats { font-size: 12.5px; color: var(--muted); }
+  .meter-stats strong { color: var(--fg); font-weight: 600; }
+  .readings-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  table.readings { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.readings th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--bg); padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.readings td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  table.readings tr:last-child td { border-bottom: 0; }
+  table.readings td.file { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.readings td.when { white-space: nowrap; color: var(--fg2); }
+  table.readings td.when.estimated { color: var(--amber); }
+  table.readings td.by { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  table.readings td.by.warn { color: var(--amber); }
+  table.readings select { height: 30px; width: 112px; }
+  table.readings input[type=text] { height: 30px; width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
+  .problems { margin-top: 8px; font-size: 12.5px; color: var(--rose); display: grid; gap: 2px; }
+  .read-status { font-size: 12.5px; color: var(--muted); margin-top: 10px; white-space: pre-wrap; }
+  .read-status.err { color: var(--rose); }
+  .read-status.warn { color: var(--amber); }
+
   /* Narrow bill column: drop the file count, then the month strip */
   @container (max-width: 1000px) {
     .row-main { grid-template-columns: minmax(160px, 1fr) 180px max-content 32px; grid-template-areas: "name type months del"; }
@@ -182,28 +248,29 @@
     .layout { grid-template-columns: minmax(0, 1fr); }
     .sidebar { position: static; max-height: none; overflow: visible; order: -1; }
     .sidebar .card:last-child { margin-bottom: 16px; }
-    .schedule-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
   }
 </style>
 </head>
-<body>
+<body class="is-loading" aria-busy="true">
 <main>
   <header>
     <div>
       <h1>Personal File Map</h1>
-      <div class="sub" id="appDir"></div>
+      <div class="sub" id="appDir"><span class="sk inline" style="width:420px;max-width:70vw"></span></div>
     </div>
-    <span class="chip" id="configChip"></span>
+    <span class="chip" id="configChip"><span class="sk inline" style="width:90px;height:10px"></span></span>
   </header>
 
   <div class="banner error hidden" id="configError"></div>
   <div class="banner error hidden" id="fatal"></div>
 
   <div class="layout">
+    <div class="main-col">
     <section class="card bills">
       <div class="card-head">
         <h2>Bills and when they're due <span class="note" id="billCount"></span></h2>
         <div class="toolbar">
+          <button type="button" class="ghost" id="openSchedules" aria-haspopup="dialog">What the schedules mean</button>
           <input type="search" id="filter" placeholder="Filter bills" aria-label="Filter bills">
         </div>
       </div>
@@ -213,12 +280,28 @@
         <span><i style="background:var(--dot);border-radius:50%;width:6px;height:6px;vertical-align:1px"></i>file found</span>
         <span><span class="badge">New</span> not in config.local.json yet, added as monthly like before</span>
       </div>
-      <div class="rows" id="rows"></div>
+      <div class="rows" id="rows" aria-label="Loading">
+        <div class="sk-row"><span class="sk"></span><span class="sk"></span><span class="sk"></span></div>
+        <div class="sk-row"><span class="sk"></span><span class="sk"></span><span class="sk"></span></div>
+        <div class="sk-row"><span class="sk"></span><span class="sk"></span><span class="sk"></span></div>
+        <div class="sk-row"><span class="sk"></span><span class="sk"></span><span class="sk"></span></div>
+      </div>
       <div class="add-row">
         <button type="button" id="add">+ Add bill</button>
         <span class="note" id="autoNote"></span>
       </div>
     </section>
+
+    <section class="card hidden" id="readingsCard">
+      <div class="card-head">
+        <h2>Meter readings</h2>
+        <div class="toolbar"><button type="button" id="readPhotos">Read new photos</button></div>
+      </div>
+      <p class="help">The kWh on each meter photo, oldest first. Times come from the photos' capture dates. Fix a misread value or type here: it's saved to <code id="readingsName">personal-file-map.readings.json</code> in the bills folder right away and never read again. Usage is worked out from these when you generate the report.</p>
+      <div id="readings"></div>
+      <div class="read-status" id="readStatus"></div>
+    </section>
+    </div>
 
     <aside class="sidebar">
       <section class="card">
@@ -228,17 +311,60 @@
           <input type="text" id="folder" spellcheck="false" autocomplete="off" aria-label="Bills folder">
           <button type="button" id="browse">Browse…</button>
         </div>
-        <div class="folder-info" id="folderInfo">Looking…</div>
+        <div class="folder-info" id="folderInfo"><span class="sk" style="width:90%"></span><span class="sk" style="width:55%"></span></div>
       </section>
 
-      <details class="card schedules" id="schedules" open>
-        <summary><h2>What the schedules mean</h2></summary>
-        <div class="schedule-grid" id="scheduleGrid"></div>
-        <p class="note">Flagged schedules mark a past month without a file as <strong>missing</strong> and the current month as <strong>due</strong>. Months before “from” or after “until” are never expected.</p>
-      </details>
+      <section class="card" id="metersCard">
+        <div class="card-head">
+          <h2>Electricity meters</h2>
+          <span class="ai-badge" title="Meter photos are read by an AI model you choose">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg>AI
+          </span>
+        </div>
+        <p class="help">Reads the kWh on photos of a prepaid electricity meter, so the report shows how much you use. Turn on <span class="zap-inline" id="zapHelp"></span> next to the meter's bill (e.g. <code>Meter 01</code>) to mark its photos.</p>
+        <div class="note">Name the photos of each top-up like this:</div>
+        <ul class="examples" id="meterExamples"></ul>
+        <p class="help" id="meterNaming">The month (<code>YYYYMM</code>), the meter's name, then anything. Use the original photos, not screenshots of them: the time each photo was taken is read from the file.</p>
+        <div class="field">
+          <label for="reader">AI reader</label>
+          <select id="reader"></select>
+        </div>
+        <div id="readerFields" class="hidden">
+          <div class="field">
+            <label for="model">Model</label>
+            <input type="text" id="model" list="modelList" spellcheck="false" autocomplete="off">
+            <datalist id="modelList"></datalist>
+            <div class="note" id="modelNote"></div>
+          </div>
+          <div class="field">
+            <label for="apiKey">API key</label>
+            <div class="key-row">
+              <input type="password" id="apiKey" spellcheck="false" autocomplete="off">
+              <button type="button" id="saveKey">Save</button>
+            </div>
+            <div class="note" id="keyNote"></div>
+          </div>
+        </div>
+        <p class="note" id="readerNote"></p>
+      </section>
+
     </aside>
   </div>
 </main>
+
+<dialog class="modal" id="schedulesDialog" aria-labelledby="schedulesTitle">
+  <div class="modal-head">
+    <div>
+      <h2 id="schedulesTitle">What the schedules mean</h2>
+      <p class="help" style="margin-bottom:0">Each schedule side by side: an example of its months, whether empty months are flagged, and when to use it.</p>
+    </div>
+    <button type="button" class="ghost icon" id="closeSchedules" aria-label="Close">✕</button>
+  </div>
+  <div class="modal-body">
+    <div class="schedule-grid" id="scheduleGrid"></div>
+    <p class="note">Flagged schedules mark a past month without a file as <strong>missing</strong> and the current month as <strong>due</strong>. Months before “from” or after “until” are never expected.</p>
+  </div>
+</dialog>
 
 <footer>
   <div class="footer-in">
@@ -273,6 +399,12 @@ let savedKeys = new Set(); // lower-cased keys in config.local.json
 let nextId = 1;
 let busy = false;
 let lastResult = null;
+let meterCfg = { reader: "off", models: {}, extraBills: [] }; // "meters" minus bills (those live on the rows)
+let meterData = null;      // POST api/meters for the current folder and meter bills
+let meterBusy = false;
+let meterMessage = null;   // { kind: "err"|"warn"|"", text }
+
+const ZAP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>';
 
 // ── API ────────────────────────────────────────────────────────────────────
 async function api(path, body) {
@@ -285,7 +417,7 @@ async function api(path, body) {
 
 // ── Schedules ↔ rows ───────────────────────────────────────────────────────
 function rowFromSpec(name, spec, extra) {
-  const r = { id: nextId++, name, type: "monthly", every: 2, from: 1, until: 12, months: new Set(), original: spec, dirty: false, auto: false, raw: false, ...extra };
+  const r = { id: nextId++, name, type: "monthly", every: 2, from: 1, until: 12, months: new Set(), original: spec, dirty: false, auto: false, raw: false, meter: false, ...extra };
   if (spec === "monthly" || spec === "quarterly" || spec === "irregular") r.type = spec;
   else if (spec === null) r.type = "none";
   else if (spec && typeof spec === "object" && !Array.isArray(spec) && (spec.months !== undefined || spec.every !== undefined)) {
@@ -390,7 +522,17 @@ function syncAutoRows() {
 }
 
 function payload() {
-  return { folder: $("folder").value.trim(), bills: rows.map((r) => [normKey(r.name), specOf(r)]) };
+  return { folder: $("folder").value.trim(), bills: rows.map((r) => [normKey(r.name), specOf(r)]), meters: meterSettings() };
+}
+
+/** "meters" as saved in config.local.json: the ⚡ bills, the reader and a model per provider. */
+function meterSettings() {
+  const onRows = rows.filter((r) => r.meter && normKey(r.name)).map((r) => normKey(r.name));
+  const lower = new Set(onRows.map((b) => b.toLowerCase()));
+  const extra = meterCfg.extraBills.filter((b) => !lower.has(b.toLowerCase()) && !rows.some((r) => normKey(r.name).toLowerCase() === b.toLowerCase()));
+  const models = {};
+  for (const [k, v] of Object.entries(meterCfg.models)) if (v && v.trim()) models[k] = v.trim();
+  return { bills: [...onRows, ...extra], reader: meterCfg.reader, models };
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────
@@ -459,8 +601,12 @@ function render() {
             : `${covered.length} bill${covered.length === 1 ? "" : "s"} · ${fileCount} file month${fileCount === 1 ? "" : "s"}`);
     const del = el("button", { type: "button", class: "ghost icon del", title: "Remove", "aria-label": `Remove ${r.name || "bill"}`, onclick: () => remove(r) }, "✕");
 
+    const zap = el("button", { type: "button", class: "zap" + (r.meter ? " on" : ""), "aria-pressed": r.meter ? "true" : "false",
+      title: r.meter ? "Electricity meter: its photos' kWh are read (click to stop)" : "Mark as an electricity meter: read the kWh on its photos",
+      "aria-label": `Electricity meter: ${r.name || "bill"}`, dataset: { row: r.id, field: "meter" }, onclick: () => edit(r, { meter: !r.meter }) });
+    zap.innerHTML = ZAP;
     const main = el("div", { class: "row-main" },
-      el("div", { class: "name-cell" }, nameInput, isNew ? el("span", { class: "badge", title: "Not in config.local.json yet" }, "New") : null),
+      el("div", { class: "name-cell" }, nameInput, zap, isNew ? el("span", { class: "badge", title: "Not in config.local.json yet" }, "New") : null),
       typeSelect, strip, coverage, del);
 
     let detail = null;
@@ -533,11 +679,11 @@ function renderStatus() {
   const s = $("status");
   const errors = rows.filter((r) => rowError(r, duplicates())).length;
   const folderBad = !$("folder").value.trim() || (preview && !preview.ok);
-  const unsaved = JSON.stringify(payload()) !== savedSnapshot;
+  const unsaved = JSON.stringify(payload()) !== savedSnapshot || Object.values(state.keys).some((k) => k.pending);
   $("generate").disabled = busy;
   if (busy) {
     s.className = "status";
-    s.replaceChildren(el("span", { class: "spinner" }), "Generating the report…");
+    s.replaceChildren(el("span", { class: "spinner" }), meterSettings().bills.length && meterCfg.reader !== "off" ? "Reading new meter photos and generating the report…" : "Generating the report…");
     return;
   }
   if (lastResult && lastResult.error) {
@@ -552,7 +698,9 @@ function renderStatus() {
     const r = lastResult;
     s.className = "status ok";
     s.replaceChildren(el("strong", {}, "Report saved. "),
-      `${r.bills} bills · ${r.files} files · ${r.due} due this month · ${r.missing} missing` + (r.added ? ` · ${r.added} new bill${r.added === 1 ? "" : "s"} added` : ""));
+      `${r.bills} bills · ${r.files} files · ${r.due} due this month · ${r.missing} missing` + (r.added ? ` · ${r.added} new bill${r.added === 1 ? "" : "s"} added` : "") +
+      (r.meterRead ? ` · ${r.meterRead} meter photo${r.meterRead === 1 ? "" : "s"} read` : ""));
+    if (r.meterProblem) s.append(el("div", { style: "color:var(--amber)" }, r.meterProblem));
     return;
   }
   if (!state.configExists) {
@@ -566,7 +714,8 @@ function renderStatus() {
 
 // ── Actions ────────────────────────────────────────────────────────────────
 function edit(r, changes) {
-  const scheduleChange = Object.keys(changes).some((k) => k !== "name");
+  const scheduleChange = Object.keys(changes).some((k) => k !== "name" && k !== "meter");
+  const meterChange = "meter" in changes || ("name" in changes && r.meter);
   if (changes.type === "months" && r.months.size === 0) {
     const before = expected(r); // start from what the previous schedule expected, or January
     changes.months = new Set(before.length > 0 && before.length < 12 ? before : [1]);
@@ -578,12 +727,14 @@ function edit(r, changes) {
   if (lastResult && lastResult.error) lastResult = null;
   syncAutoRows();
   render();
+  if (meterChange) meterSettingsChanged();
 }
 
 function remove(r) {
   rows = rows.filter((x) => x !== r);
   syncAutoRows();
   render();
+  if (r.meter) meterSettingsChanged();
 }
 
 function addRow() {
@@ -611,6 +762,7 @@ async function loadPreview() {
   renderFolderInfo();
   syncAutoRows();
   render();
+  loadMeters();
 }
 let previewTimer = null;
 function folderChanged() {
@@ -648,6 +800,7 @@ async function generate() {
       renderHeader();
       loadSettings(state.settings);
       await loadPreview();
+      renderReader();
     }
   } catch (e) {
     lastResult = { ok: false, error: String(e.message || e) };
@@ -661,7 +814,12 @@ async function generate() {
 
 function loadSettings(settings) {
   $("folder").value = settings.folder;
-  rows = settings.bills.map(([k, v]) => rowFromSpec(k, v));
+  const m = settings.meters || { bills: [], reader: "off", models: {} };
+  const meterKeys = new Set(m.bills.map((b) => normKey(b).toLowerCase()));
+  rows = settings.bills.map(([k, v]) => rowFromSpec(k, v, { meter: meterKeys.has(normKey(k).toLowerCase()) }));
+  // ⚡ bills with no row of their own (e.g. a default-config bill) are kept as they are
+  const rowKeys = new Set(rows.map((r) => normKey(r.name).toLowerCase()));
+  meterCfg = { reader: m.reader, models: { ...m.models }, extraBills: m.bills.filter((b) => !rowKeys.has(normKey(b).toLowerCase())) };
   savedKeys = new Set(state.configExists ? settings.bills.map(([k]) => normKey(k).toLowerCase()) : []);
   savedSnapshot = state.configExists ? JSON.stringify(payload()) : null;
 }
@@ -683,6 +841,227 @@ function renderScheduleLegend() {
     text)));
 }
 
+// ── Electricity meters ─────────────────────────────────────────────────────
+/** Example file names for meter photos, with this month and the first ⚡ meter's name. */
+function renderMeterExamples() {
+  const now = new Date();
+  const year = preview && preview.ok ? preview.year : now.getFullYear();
+  const month = year === now.getFullYear() ? now.getMonth() + 1 : 1;
+  const prefix = `${year}${String(month).padStart(2, "0")}`;
+  const meter = meterSettings().bills[0] || "Meter 01";
+  const items = [
+    ["Photo 1 Before", "the credit left, just before topping up"],
+    ["Photo 2 Topup", "the kWh just added: the meter's screen after the token, or the receipt"],
+    ["Photo 3 After", "the credit right after topping up"],
+  ];
+  $("meterExamples").replaceChildren(...items.map(([part, what]) => el("li", {}, el("code", {}, `${prefix} ${meter} ${part}.jpg`), what)));
+}
+
+const fmtTok = (n) => n.toLocaleString();
+const fmtUsd = (v) => "$" + (v < 0.01 ? v.toPrecision(2) : v.toFixed(2));
+/** "15,672 in · 858 out · 0 cache · ≈ $0.0020" for a set of AI readings. */
+function aiSummary(t) {
+  const cost = t.unpriced === t.photos ? "cost unknown for this model" : `≈ ${fmtUsd(t.costUsd)}` + (t.unpriced ? ` (+${t.unpriced} unpriced)` : "");
+  return `${fmtTok(t.usage.input)} in · ${fmtTok(t.usage.output)} out · ${fmtTok(t.usage.cacheRead + t.usage.cacheWrite)} cache · ${cost}`;
+}
+const provider = () => state.providers.find((p) => p.id === meterCfg.reader) || null;
+
+function renderReader() {
+  const sel = $("reader");
+  sel.replaceChildren(
+    el("option", { value: "off", selected: meterCfg.reader === "off" }, "Off: don't send any photos"),
+    ...state.providers.map((p) => el("option", { value: p.id, selected: meterCfg.reader === p.id }, p.label)));
+  const p = provider();
+  $("readerFields").classList.toggle("hidden", !p);
+  if (!p) {
+    $("readerNote").textContent = "Nothing leaves this computer. Readings already saved, and values you type in, are still used in the report.";
+    renderMeterActions();
+    return;
+  }
+  const model = $("model");
+  if (document.activeElement !== model) model.value = meterCfg.models[p.id] || "";
+  model.placeholder = p.models[0].id;
+  $("modelList").replaceChildren(...p.models.map((m) => el("option", { value: m.id }, m.note)));
+  const known = p.models.find((m) => m.id === (model.value.trim() || p.models[0].id));
+  $("modelNote").textContent = known ? `${known.id}: ${known.note}.` : "A model id from the provider's model list. It must be able to read images.";
+
+  const k = state.keys[p.id];
+  $("apiKey").placeholder = k.hint ? `•••• ${k.hint}` : `${p.keyPrefix}…`;
+  const note = $("keyNote");
+  if (k.pending === "set") {
+    note.replaceChildren(`Key ending in ${k.hint} is used now and saved to config.local.json when you generate the report. `,
+      el("button", { type: "button", class: "linkish", onclick: () => saveKey(undefined) }, k.saved ? "Keep the saved key" : "Remove"));
+  } else if (k.pending === "remove") {
+    note.replaceChildren("Removed from config.local.json when you generate the report. ",
+      el("button", { type: "button", class: "linkish", onclick: () => saveKey(undefined) }, "Keep it"));
+  } else if (k.saved) {
+    note.replaceChildren(`In config.local.json, ending in ${k.hint}. `,
+      el("button", { type: "button", class: "linkish", onclick: () => saveKey(null) }, "Remove"));
+  } else if (k.env) {
+    note.textContent = `Using the key from the ${p.id === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY"} environment variable (ends in ${k.hint}).`;
+  } else {
+    note.replaceChildren("Not set. ", el("button", { type: "button", class: "linkish", onclick: () => api("open", { target: `keys:${p.id}` }) }, "Create a key"),
+      " in your account, paste it here and click Save.");
+  }
+  $("readerNote").textContent = `Only the photos of ⚡ bills are sent to ${p.label.replace(/^.*\((.*)\)$/, "$1")}, scaled down, once each. The key is saved in config.local.json next to the app: if that folder is synced or shared, the key goes with it.`;
+  renderMeterActions();
+}
+
+/** key: a new key · null: remove the saved one · undefined: undo what was typed since the last save. */
+async function saveKey(key) {
+  const p = provider();
+  if (!p) return;
+  $("saveKey").disabled = true;
+  try {
+    const r = await api("keys", key === undefined ? { provider: p.id, revert: true } : { provider: p.id, key });
+    if (!r.ok) { meterMessage = { kind: "err", text: r.error }; renderMeters(); return; }
+    state.keys = r.keys;
+    $("apiKey").value = "";
+    meterMessage = null;
+    renderStatus();
+  } finally {
+    $("saveKey").disabled = false;
+  }
+  renderReader();
+  renderMeters();
+  loadMeters(); // whether new photos can be read depends on the key
+}
+
+let meterSeq = 0;
+let meterTimer = null;
+function meterSettingsChanged() {
+  clearTimeout(meterTimer);
+  meterTimer = setTimeout(loadMeters, 250);
+  renderStatus();
+}
+
+async function loadMeters() {
+  const m = meterSettings();
+  if (m.bills.length === 0 || !preview || !preview.ok) { meterData = null; renderMeters(); return; }
+  const seq = ++meterSeq;
+  try {
+    const r = await api("meters", { folder: $("folder").value.trim(), meters: m });
+    if (seq !== meterSeq) return;
+    if (r.ok) meterData = r;
+    else meterMessage = { kind: "err", text: r.error };
+  } catch (e) {
+    if (seq === meterSeq) meterMessage = { kind: "err", text: String(e.message || e) };
+  }
+  renderMeters();
+}
+
+async function readPhotos() {
+  if (meterBusy) return;
+  meterBusy = true;
+  meterMessage = null;
+  renderMeters();
+  try {
+    const r = await api("meters/read", { folder: $("folder").value.trim(), meters: meterSettings() });
+    if (!r.ok) meterMessage = { kind: "err", text: r.error };
+    else {
+      meterData = r;
+      const res = r.read;
+      if (res && res.stopped) meterMessage = { kind: "err", text: res.stopped };
+      else if (res && res.failed.length) meterMessage = { kind: "warn", text: `${res.read} read. Couldn't read ${res.failed.length}:\n` + res.failed.map((f) => `${f.file}: ${f.error}`).join("\n") };
+      else if (res) meterMessage = { kind: "", text: `${res.read} photo${res.read === 1 ? "" : "s"} read` + (res.totals.photos ? ` · tokens: ${aiSummary(res.totals)}` : "") + `. Check the values against the photos; fix any that are off. Each request and response is logged in the logs folder next to the app.` };
+    }
+  } catch (e) {
+    meterMessage = { kind: "err", text: String(e.message || e) };
+  } finally {
+    meterBusy = false;
+  }
+  renderMeters();
+}
+
+async function editReading(file, kind, kwhText, input) {
+  const kwh = Number(String(kwhText).replace(",", "."));
+  if (kind !== "other" && !(kwh > 0)) { if (input) input.classList.add("invalid"); return; }
+  try {
+    const r = await api("meters/edit", { folder: $("folder").value.trim(), meters: meterSettings(), file, kind, kwh });
+    if (!r.ok) meterMessage = { kind: "err", text: r.error };
+    else { meterData = r; meterMessage = null; }
+  } catch (e) {
+    meterMessage = { kind: "err", text: String(e.message || e) };
+  }
+  renderMeters();
+}
+
+const fmtKwh = (n, d = 1) => n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+const fmtWhen = (iso) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function renderMeterActions() {
+  const btn = $("readPhotos");
+  const unread = meterData ? meterData.meters.reduce((n, m) => n + m.unread, 0) : 0;
+  const p = provider();
+  const key = p && state.keys[p.id].hint !== ""; // a key is in use: saved, typed (not written yet) or from the environment
+  btn.disabled = meterBusy || unread === 0 || !p || !key;
+  btn.title = !p ? "Choose an AI reader under Electricity meters first" : !key ? "Save an API key under Electricity meters first" : unread === 0 ? "Every photo has a reading" : "";
+  btn.replaceChildren(...(meterBusy ? [el("span", { class: "spinner" }), `Reading ${unread} photo${unread === 1 ? "" : "s"}…`] : [unread ? `Read ${unread} new photo${unread === 1 ? "" : "s"}` : "Read new photos"]));
+}
+
+function renderMeters() {
+  renderMeterExamples();
+  const card = $("readingsCard");
+  const bills = meterSettings().bills;
+  card.classList.toggle("hidden", bills.length === 0);
+  renderMeterActions();
+  const box = $("readings");
+  const status = $("readStatus");
+  status.className = "read-status" + (meterMessage && meterMessage.kind ? " " + meterMessage.kind : "");
+  status.textContent = meterMessage ? meterMessage.text : meterData && meterData.blocked && meterData.meters.some((m) => m.unread) ? meterData.blocked : "";
+  if (bills.length === 0) return;
+  if (!meterData) {
+    box.replaceChildren(el("div", { "aria-label": "Loading meter photos" },
+      ...[0, 1, 2].map(() => el("div", { class: "sk-row", style: "grid-template-columns: 120px minmax(0,1fr) 112px 96px" }, el("span", { class: "sk" }), el("span", { class: "sk" }), el("span", { class: "sk" }), el("span", { class: "sk" })))));
+    return;
+  }
+  if (meterData.meters.length === 0) {
+    const ex = $("meterExamples").querySelector("code");
+    box.replaceChildren(el("div", { class: "empty" }, `No photos (JPG, PNG or HEIC) of ${bills.join(", ")} in the bills folder yet. Name them like `, el("code", {}, ex ? ex.textContent : "202611 Meter 01 Photo 1 Before.jpg"), " (see Electricity meters)."));
+    return;
+  }
+  box.replaceChildren(...meterData.meters.map((m) => {
+    const stats = [];
+    if (m.coveredDays >= 1) stats.push(el("span", {}, el("strong", {}, `${fmtKwh(m.totalUsed, 0)} kWh`), ` used over ${Math.round(m.coveredDays)} days`));
+    if (m.perDay !== null) stats.push(el("span", {}, " · ", el("strong", {}, `${fmtKwh(m.perDay)} kWh`), " a day"));
+    if (m.balance) stats.push(el("span", {}, ` · ${fmtKwh(m.balance.kwh)} kWh left on ${fmtDay(m.balance.at)}` + (m.runsOut ? `, lasts until about ${fmtDay(m.runsOut)}` : "")));
+    if (stats.length === 0) stats.push(el("span", {}, "Usage shows once there are two balance readings a few days apart."));
+    if (m.ai.photos) stats.push(el("div", { title: "Tokens and cost of every AI reading of this meter's photos so far (prices as of the app's release)" }, `AI: ${m.ai.photos} photo${m.ai.photos === 1 ? "" : "s"} · ${aiSummary(m.ai)}`));
+
+    const body = m.photos.map((ph) => {
+      const r = ph.reading;
+      const kind = el("select", { "aria-label": `What ${ph.file} shows` },
+        r ? null : el("option", { value: "", selected: true, disabled: true }, "Not read"),
+        [["balance", "Balance"], ["topup", "Top-up"], ["other", "Ignore"]].map(([v, label]) => el("option", { value: v, selected: r && r.kind === v }, label)));
+      const kwh = el("input", { type: "text", inputmode: "decimal", value: r && r.kind !== "other" ? r.kwh.toFixed(2) : "", placeholder: "kWh", "aria-label": `kWh on ${ph.file}`, disabled: r && r.kind === "other" });
+      const save = () => { if (kind.value) editReading(ph.file, kind.value, kwh.value, kwh); };
+      kind.addEventListener("change", () => { kwh.disabled = kind.value === "other"; if (kind.value === "other" || kwh.value) save(); else kwh.focus(); });
+      kwh.addEventListener("change", save);
+      kwh.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); kwh.blur(); } });
+      kwh.addEventListener("input", () => kwh.classList.remove("invalid"));
+      const unsure = r && !r.edited && r.confidence !== "high";
+      const by = !r ? "" : r.edited ? "you" : r.by.split("/").pop() + (r.code ? ` · code ${r.code}` : "") + (unsure ? ` · ${r.confidence} confidence` : "") + (r.note ? ` · ${r.note}` : "");
+      const dateTitle = ph.dateSource === "photo" ? "From the photo's capture date" : ph.dateSource === "file" ? "No capture date in the photo: the file's date is used" : "No capture date in the photo: mid-month is assumed";
+      return el("tr", {},
+        el("td", { class: "when" + (ph.dateSource === "month" ? " estimated" : ""), title: dateTitle }, fmtWhen(ph.takenAt) + (ph.dateSource === "photo" ? "" : " *")),
+        el("td", { class: "file", title: ph.file }, ph.file),
+        el("td", {}, kind),
+        el("td", {}, kwh),
+        el("td", { class: "by" + (unsure ? " warn" : "") }, by),
+        el("td", { class: "ai", title: r && r.usage ? `${fmtTok(r.usage.input)} tokens in, ${fmtTok(r.usage.output)} out, ${fmtTok(r.usage.cacheRead)} cache read, ${fmtTok(r.usage.cacheWrite)} cache write` : "" },
+          r && r.usage ? `${fmtTok(r.usage.input)} / ${fmtTok(r.usage.output)} / ${fmtTok(r.usage.cacheRead + r.usage.cacheWrite)} · ${typeof r.costUsd === "number" ? fmtUsd(r.costUsd) : "?"}` : ""));
+    });
+    return el("div", { class: "meter" },
+      el("div", { class: "meter-head" }, el("h3", {}, m.meter), el("div", { class: "meter-stats" }, ...stats)),
+      el("div", { class: "readings-wrap" }, el("table", { class: "readings" },
+        el("thead", {}, el("tr", {}, ...["Taken", "Photo", "Shows", "kWh", "Read by"].map((h) => el("th", {}, h)),
+          el("th", { class: "num", title: "Tokens in / out / cache, and the cost in USD" }, "Tokens in / out / cache · USD"))),
+        el("tbody", {}, ...body))),
+      m.problems.length ? el("div", { class: "problems" }, ...m.problems.map((p) => el("div", {}, `${fmtDay(p.from)} – ${fmtDay(p.to)}: ${p.problem}`))) : null);
+  }));
+}
+
 // ── Start ──────────────────────────────────────────────────────────────────
 async function start() {
   try {
@@ -691,6 +1070,7 @@ async function start() {
     $("fatal").textContent = "Couldn't load the settings: " + (e.message || e);
     $("fatal").classList.remove("hidden");
     $("status").textContent = "";
+    document.body.classList.remove("is-loading");
     return;
   }
   document.title = state.title;
@@ -703,8 +1083,24 @@ async function start() {
   $("reveal").textContent = state.platform === "win32" ? "Show in Explorer" : state.platform === "darwin" ? "Show in Finder" : "Show in folder";
   renderScheduleLegend();
   loadSettings(state.settings);
+  $("zapHelp").innerHTML = ZAP;
+  $("readingsName").textContent = state.readingsName;
+  renderReader();
+  renderMeterExamples();
   render();
   await loadPreview();
+  document.body.classList.remove("is-loading");
+  document.body.removeAttribute("aria-busy");
+
+  $("reader").addEventListener("change", (e) => { meterCfg.reader = e.target.value; meterMessage = null; renderReader(); renderMeters(); meterSettingsChanged(); });
+  $("model").addEventListener("input", (e) => { const p = provider(); if (p) meterCfg.models[p.id] = e.target.value; renderReader(); renderStatus(); });
+  $("saveKey").addEventListener("click", () => { const v = $("apiKey").value.trim(); if (v) saveKey(v); else $("apiKey").focus(); });
+  $("apiKey").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("saveKey").click(); } });
+  $("readPhotos").addEventListener("click", readPhotos);
+  const dialog = $("schedulesDialog");
+  $("openSchedules").addEventListener("click", () => dialog.showModal());
+  $("closeSchedules").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); }); // click outside the box
 
   $("folder").addEventListener("input", folderChanged);
   $("filter").addEventListener("input", render);

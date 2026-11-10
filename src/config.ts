@@ -3,6 +3,8 @@ import * as os from "os";
 import * as path from "path";
 // config.default.json is compiled into the app: the template for new config.local.json files.
 import embeddedDefaults from "../config.default.json";
+import { DEFAULT_METERS, validateMeters, type MeterSettings } from "./meters";
+import { mergeKeys, type ApiKeys, type PendingKeys } from "./reader";
 
 /**
  * - config.default.json: built into the app (edit config.default.json and rebuild).
@@ -49,6 +51,7 @@ const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct
 export interface PartialConfig {
   folder?: string;
   bills?: Record<string, ScheduleSpec>;
+  meters?: MeterSettings;
 }
 
 /** The built-in config.default.json. */
@@ -79,10 +82,11 @@ export function addBillsToLocalConfig(dir: string, billNames: string[]): Partial
   return writeRaw(dir, raw);
 }
 
-/** What the settings window edits: "folder" and "bills" (as ordered entries) of config.local.json. */
+/** What the settings window edits: "folder", "bills" (as ordered entries) and "meters" of config.local.json. */
 export interface Settings {
   folder: string;
   bills: [string, ScheduleSpec][];
+  meters: MeterSettings;
 }
 
 /**
@@ -100,21 +104,55 @@ export function loadSettings(dir: string): { settings: Settings; exists: boolean
   }
   const source = local ?? loadDefaults();
   return {
-    settings: { folder: source.folder ?? DEFAULT_FOLDER, bills: Object.entries(source.bills ?? {}) },
+    settings: {
+      folder: source.folder ?? DEFAULT_FOLDER,
+      bills: Object.entries(source.bills ?? {}),
+      meters: source.meters ?? { ...DEFAULT_METERS },
+    },
     exists,
     error,
   };
 }
 
 /**
- * Writes "folder" and "bills" into config.local.json in `dir` (created from the built-in template if
- * missing or unreadable). Other keys, such as "_help", and their order are kept.
+ * Writes "folder", "bills" and "meters" into config.local.json in `dir` (created from the built-in template
+ * if missing or unreadable). Other keys, such as "_help", and their order are kept. The window never sees
+ * the API keys, so the saved ones are kept and only the window's changes (`pendingKeys`) are applied.
  */
-export function saveSettings(dir: string, folder: string, bills: Record<string, ScheduleSpec>): PartialConfig {
+export function saveSettings(
+  dir: string,
+  folder: string,
+  bills: Record<string, ScheduleSpec>,
+  meters: MeterSettings,
+  pendingKeys: PendingKeys = {}
+): PartialConfig {
   const raw = readRawOrTemplate(dir);
   raw.folder = folder;
   raw.bills = bills;
+  const apiKeys = mergeKeys(savedKeys(raw), pendingKeys);
+  const { apiKeys: _ignored, ...rest } = meters;
+  const used = rest.bills.length > 0 || rest.reader !== "off" || Object.keys(rest.models).length > 0 || Object.keys(apiKeys).length > 0;
+  if (used || raw.meters !== undefined) {
+    raw.meters = Object.keys(apiKeys).length > 0 ? { ...rest, apiKeys } : rest;
+  }
   return writeRaw(dir, raw);
+}
+
+/** The API keys in config.local.json in `dir` ({} if none, or the file is missing or broken). */
+export function loadApiKeys(dir: string): ApiKeys {
+  try {
+    return savedKeys(JSON.parse(fs.readFileSync(path.join(dir, LOCAL_CONFIG_NAME), "utf8").replace(/^\uFEFF/, "")));
+  } catch {
+    return {};
+  }
+}
+
+function savedKeys(raw: Record<string, unknown>): ApiKeys {
+  try {
+    return validateMeters(raw.meters, LOCAL_CONFIG_NAME).apiKeys;
+  } catch {
+    return {};
+  }
 }
 
 function readRawOrTemplate(dir: string): Record<string, unknown> {
@@ -152,14 +190,18 @@ function validate(parsed: unknown, name: string): PartialConfig {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`${name} must be a JSON object, e.g. { "folder": "./", "bills": { "Rent": "monthly" } }`);
   }
-  const { folder, bills } = parsed as { folder?: unknown; bills?: unknown };
+  const { folder, bills, meters } = parsed as { folder?: unknown; bills?: unknown; meters?: unknown };
   if (folder !== undefined && (typeof folder !== "string" || !folder.trim())) {
     throw new Error(`"folder" in ${name} must be a path, e.g. "./" or "/Users/me/Bills/2026"`);
   }
   if (bills !== undefined && (bills === null || typeof bills !== "object" || Array.isArray(bills))) {
     throw new Error(`"bills" in ${name} must be an object, e.g. { "Rent": "monthly" }`);
   }
-  return { folder: folder as string | undefined, bills: bills as Record<string, ScheduleSpec> | undefined };
+  return {
+    folder: folder as string | undefined,
+    bills: bills as Record<string, ScheduleSpec> | undefined,
+    meters: meters === undefined ? undefined : validateMeters(meters, name),
+  };
 }
 
 /** "./" → appDir, "../2026" → sibling, "~/Bills" → home, absolute paths as-is. */

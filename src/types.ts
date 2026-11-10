@@ -52,6 +52,8 @@ export interface BillGroup {
   rows: BillRow[];
 }
 
+import type { Electricity } from "./meters";
+
 export interface Report {
   year: number;
   generatedAt: Date;
@@ -65,6 +67,8 @@ export interface Report {
   ignored: IgnoredFile[];
   configNotes: IgnoredFile[]; // problems or reminders about the config files
   housekeeping: IgnoredFile[]; // clean-up done this run (renames / conversions)
+  /** Electricity meters (config "meters"), or null when none is set up. */
+  electricity: Electricity | null;
   stats: {
     scheduledCount: number;
     irregularCount: number;

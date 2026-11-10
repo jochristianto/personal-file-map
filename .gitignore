@@ -8,6 +8,8 @@ node_modules/
 # Created when the app runs, wherever it runs (e.g. inside out/samples/)
 config.local.json
 personal-file-map.output.pdf
+personal-file-map.readings.json
+logs/
 
 # The apps, if copied elsewhere in the repo
 personal-file-map.app

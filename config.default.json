@@ -1,10 +1,12 @@
 {
   "_help": [
     "Personal File Map settings for this folder, edited in the settings window that opens when you double-click the app. Created from the app's built-in defaults; any bill found that isn't listed yet is added as \"monthly\".",
-    "\"folder\": where the bill files are, relative to this file. \"./\" = this folder. Also accepts \"./samples\", \"../2026\", an absolute path, or \"~/...\". The PDF (personal-file-map.output.pdf) is written there.",
+    "\"folder\": where the bill files are, relative to this file. \"./\" = this folder. Also accepts \"./samples\", \"../2026\", an absolute path, or \"~/...\". The PDF (personal-file-map.output.pdf) and the meter readings (personal-file-map.readings.json) are written there.",
     "\"bills\": which months each bill is expected. Bills not listed (or null) are shown but never flagged.",
     "Values: \"monthly\", \"quarterly\" (Jan/Apr/Jul/Oct), \"irregular\", null, {\"months\": [1, 7]}, {\"every\": 2, \"from\": 3, \"until\": 12}.",
-    "A key also covers every bill that starts with it: \"Meter 01\" covers \"Meter 01 Photo 1 Before\" etc. The longest matching key wins."
+    "A key also covers every bill that starts with it: \"Meter 01\" covers \"Meter 01 Photo 1 Before\" etc. The longest matching key wins.",
+    "\"meters\" (optional, added once you use the ⚡ button or pick a reader): electricity meter photos. \"bills\": bill names whose photos show a kWh meter, matched like \"bills\" keys, e.g. [\"Meter 01\"]. \"reader\": \"off\", \"anthropic\" or \"openai\". \"models\": model per provider, e.g. {\"anthropic\": \"claude-haiku-5-5\"}; a missing one uses the suggested model.",
+    "\"meters\" → \"apiKeys\": the API key per provider, in plain text. If this folder is synced (Google Drive, iCloud, Dropbox) or shared, the key goes with it: remove it, or revoke it at the provider, before sharing."
   ],
   "folder": "./",
   "bills": {}

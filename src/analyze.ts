@@ -157,6 +157,7 @@ export function analyze(scan: ScanResult, opts: AnalyzeOptions): Report {
     ignored: scan.ignored,
     configNotes,
     housekeeping: opts.housekeeping,
+    electricity: null,
     stats: {
       scheduledCount: scheduled.length,
       irregularCount: orderedRows.filter((r) => r.pattern === "irregular").length,

@@ -12,6 +12,8 @@ import {
   resolveFolder,
 } from "./config";
 import { detectYear, selfName } from "./locate";
+import { LOGS_FOLDER } from "./ailog";
+import { DEFAULT_METERS, electricity } from "./meters";
 import { renderPdf } from "./pdf";
 import { isMac } from "./platform";
 import { normalizeDirectory, OUTPUT_NAME, scanDirectory } from "./scan";
@@ -25,6 +27,9 @@ export interface GenerateResult {
   missing: number;
   /** Bills config.local.json gained this run because no key covered them. */
   added: number;
+  /** Meter photos read this run, and problems reading them. */
+  meterRead: number;
+  meterProblem: string | null;
 }
 
 /**
@@ -65,6 +70,18 @@ export async function generate(appDir: string, today: Date, created: boolean): P
     configCreated: created,
     configAdded: newBills.length,
   });
+
+  // Electricity meters: read new meter photos (if a reader is set up), then work out the usage
+  const meters = local?.meters ?? defaults.meters ?? DEFAULT_METERS;
+  if (meters.bills.length > 0) {
+    report.electricity = await electricity(dir, year, scan.files, meters, {
+      read: true,
+      logDir: path.join(appDir, LOGS_FOLDER),
+      onProgress: (done, total) => console.log(`  Meter photos read: ${done}/${total}`),
+    });
+    const r = report.electricity.read;
+    if (r) console.log(`  Meter photos: ${r.read} read, ${r.failed.length} failed${r.stopped ? ` (stopped: ${r.stopped})` : ""}; logs in ${LOGS_FOLDER}/`);
+  }
   const pdf = await renderPdf(report);
 
   const out = path.join(dir, OUTPUT_NAME);
@@ -90,6 +107,8 @@ export async function generate(appDir: string, today: Date, created: boolean): P
     due: s.dueThisMonth.length,
     missing: s.missingCells,
     added: newBills.length,
+    meterRead: report.electricity?.read?.read ?? 0,
+    meterProblem: meterProblem(report),
   };
 }
 
@@ -114,4 +133,14 @@ export async function checkFolder(dir: string, setting: string | undefined) {
       : "";
     throw new FolderError(`Can't open the bills folder:\n${dir}${where}${hint}`, blocked);
   }
+}
+
+/** One line for the window about meter photos that couldn't be read this run, or null. */
+function meterProblem(report: { electricity: import("./meters").Electricity | null }): string | null {
+  const e = report.electricity;
+  if (!e) return null;
+  if (e.read?.stopped) return e.read.stopped;
+  if (e.read && e.read.failed.length > 0) return `${e.read.failed.length} meter photo${e.read.failed.length === 1 ? "" : "s"} couldn't be read: ${e.read.failed[0].error}`;
+  if (e.blocked) return e.blocked;
+  return null;
 }

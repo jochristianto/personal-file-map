@@ -1,6 +1,8 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import { CONFIG_FILES } from "./config";
+import { READINGS_NAME } from "./meters";
+import { captureDate, withCaptureDate } from "./photo";
 import type { BillFile, IgnoredFile, ScanResult } from "./types";
 
 export const ALLOWED_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg", "heic"]);
@@ -16,7 +18,7 @@ function isSilentlyIgnored(file: string, _year: number, self: string | null): bo
   if (self && lower === self.toLowerCase()) return true;
   if (/^personal-file-map.*\.exe$/.test(lower)) return true; // the Windows build sitting next to the Mac app
   if (CONFIG_FILES.includes(lower)) return true;
-  if (lower === OUTPUT_NAME) return true;
+  if (lower === OUTPUT_NAME || lower === READINGS_NAME) return true;
   // Left behind by the app's earlier name, Bills Overview
   if (lower === LEGACY_OUTPUT_NAME || /^bills-overview.*\.exe$/.test(lower)) return true;
   if (/^presence-map-\d{4}\.png$/.test(lower)) return true; // output of the old file-mapper script
@@ -55,8 +57,11 @@ export async function normalizeDirectory(dir: string, year: number, self: string
       try {
         const input = await fs.readFile(heicPath);
         const output = await convert({ buffer: input as unknown as ArrayBuffer, format: "JPEG", quality: 0.95 });
-        const buf = Buffer.from(output);
+        let buf: Buffer = Buffer.from(output);
         if (buf.length === 0) throw new Error("empty output");
+        // The converter drops the photo's metadata; keep when it was taken (meter usage is measured by it)
+        const taken = await captureDate(input);
+        if (taken) buf = withCaptureDate(buf, taken);
         await fs.writeFile(jpgPath, buf);
         await fs.unlink(heicPath);
         actions.push({ file, reason: "converted to .jpg" });

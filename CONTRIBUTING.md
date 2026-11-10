@@ -38,7 +38,7 @@ On Windows or Linux you can still work on everything except the macOS bundles: `
 | `pnpm build` | The real apps in `out/` (CI runs this) |
 | `pnpm samples [year] [month]` | Regenerate the sample bills |
 
-Useful environment variables for `pnpm dev`: `BILLS_TODAY=2026-11-10` fakes today's date, `BILLS_NO_OPEN=1` doesn't open the PDF, `BILLS_NO_WINDOW=1` prints the window's address instead of opening a window.
+Useful environment variables for `pnpm dev`: `BILLS_TODAY=2026-11-10` fakes today's date, `BILLS_NO_OPEN=1` doesn't open the PDF, `BILLS_NO_WINDOW=1` prints the window's address instead of opening a window. For the electricity meter reader, `BILLS_ANTHROPIC_BASE_URL` / `BILLS_OPENAI_BASE_URL` point it at a mock server, so you can test without an API key or credit.
 
 [How it works](README.md#how-it-works) and [Project structure](README.md#project-structure) in the README walk through the code.
 
