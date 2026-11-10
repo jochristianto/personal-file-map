@@ -152,6 +152,19 @@ export class ReadingStore {
     this.byHash.set(reading.sha1, reading);
   }
 
+  /**
+   * A photo was converted (HEIC → JPG): its reading moves to the new file and content, so it isn't read
+   * again. Returns whether there was a reading to move.
+   */
+  carryOver(oldSha1: string, newFile: string, newSha1: string): boolean {
+    const reading = this.byHash.get(oldSha1);
+    if (!reading) return false;
+    for (const [name, r] of Object.entries(this.data.photos)) if (r === reading) delete this.data.photos[name];
+    this.byHash.delete(oldSha1);
+    this.set(newFile, { ...reading, sha1: newSha1 });
+    return true;
+  }
+
   save() {
     const photos = Object.fromEntries(Object.entries(this.data.photos).sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true })));
     const out: ReadingsFile = { _help: HELP, photos };

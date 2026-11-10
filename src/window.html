@@ -220,10 +220,11 @@
   table.readings th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--bg); padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.readings td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   table.readings tr:last-child td { border-bottom: 0; }
-  table.readings td.file { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.readings td.file { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   table.readings td.when { white-space: nowrap; color: var(--fg2); }
   table.readings td.when.estimated { color: var(--amber); }
-  table.readings td.by { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  table.readings td.by { color: var(--muted); font-size: 12px; min-width: 130px; line-height: 1.35; }
+  table.readings td.by small, table.readings td.ai small { display: block; font-size: 11.5px; color: var(--faint); }
   table.readings td.by.warn { color: var(--amber); }
   table.readings select { height: 30px; width: 112px; }
   table.readings input[type=text] { height: 30px; width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -1041,22 +1042,24 @@ function renderMeters() {
       kwh.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); kwh.blur(); } });
       kwh.addEventListener("input", () => kwh.classList.remove("invalid"));
       const unsure = r && !r.edited && r.confidence !== "high";
-      const by = !r ? "" : r.edited ? "you" : r.by.split("/").pop() + (r.code ? ` · code ${r.code}` : "") + (unsure ? ` · ${r.confidence} confidence` : "") + (r.note ? ` · ${r.note}` : "");
+      const byModel = !r ? "" : r.edited ? "you" : r.by.split("/").pop();
+      const byDetail = !r ? "" : [r.code ? `code ${r.code}` : "", unsure ? `${r.confidence} confidence` : "", r.note].filter(Boolean).join(" · ");
       const dateTitle = ph.dateSource === "photo" ? "From the photo's capture date" : ph.dateSource === "file" ? "No capture date in the photo: the file's date is used" : "No capture date in the photo: mid-month is assumed";
       return el("tr", {},
         el("td", { class: "when" + (ph.dateSource === "month" ? " estimated" : ""), title: dateTitle }, fmtWhen(ph.takenAt) + (ph.dateSource === "photo" ? "" : " *")),
         el("td", { class: "file", title: ph.file }, ph.file),
         el("td", {}, kind),
         el("td", {}, kwh),
-        el("td", { class: "by" + (unsure ? " warn" : "") }, by),
+        el("td", { class: "by" + (unsure ? " warn" : "") }, byModel, byDetail ? el("small", {}, byDetail) : null),
         el("td", { class: "ai", title: r && r.usage ? `${fmtTok(r.usage.input)} tokens in, ${fmtTok(r.usage.output)} out, ${fmtTok(r.usage.cacheRead)} cache read, ${fmtTok(r.usage.cacheWrite)} cache write` : "" },
-          r && r.usage ? `${fmtTok(r.usage.input)} / ${fmtTok(r.usage.output)} / ${fmtTok(r.usage.cacheRead + r.usage.cacheWrite)} · ${typeof r.costUsd === "number" ? fmtUsd(r.costUsd) : "?"}` : ""));
+          r && r.usage ? `${fmtTok(r.usage.input)} / ${fmtTok(r.usage.output)} / ${fmtTok(r.usage.cacheRead + r.usage.cacheWrite)}` : "",
+          r && r.usage ? el("small", {}, typeof r.costUsd === "number" ? fmtUsd(r.costUsd) : "cost unknown") : null));
     });
     return el("div", { class: "meter" },
       el("div", { class: "meter-head" }, el("h3", {}, m.meter), el("div", { class: "meter-stats" }, ...stats)),
       el("div", { class: "readings-wrap" }, el("table", { class: "readings" },
         el("thead", {}, el("tr", {}, ...["Taken", "Photo", "Shows", "kWh", "Read by"].map((h) => el("th", {}, h)),
-          el("th", { class: "num", title: "Tokens in / out / cache, and the cost in USD" }, "Tokens in / out / cache · USD"))),
+          el("th", { class: "num", title: "Tokens in / out / cache, and the cost in USD" }, "Tokens in/out/cache", el("small", { style: "display:block;font-weight:500" }, "USD")))),
         el("tbody", {}, ...body))),
       m.problems.length ? el("div", { class: "problems" }, ...m.problems.map((p) => el("div", {}, `${fmtDay(p.from)} – ${fmtDay(p.to)}: ${p.problem}`))) : null);
   }));

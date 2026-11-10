@@ -1,7 +1,8 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import { CONFIG_FILES } from "./config";
-import { READINGS_NAME } from "./meters";
+import { createHash } from "crypto";
+import { READINGS_NAME, ReadingStore } from "./meters";
 import { captureDate, withCaptureDate } from "./photo";
 import type { BillFile, IgnoredFile, ScanResult } from "./types";
 
@@ -49,6 +50,7 @@ export async function normalizeDirectory(dir: string, year: number, self: string
   if (heics.length > 0) {
     // Loaded lazily: the HEIC decoder is large and rarely needed.
     const { default: convert } = await import("heic-convert");
+    let store: ReadingStore | null = null;
     for (const file of heics) {
       const jpg = file.slice(0, -".heic".length) + ".jpg";
       const heicPath = path.join(dir, file);
@@ -63,6 +65,9 @@ export async function normalizeDirectory(dir: string, year: number, self: string
         const taken = await captureDate(input);
         if (taken) buf = withCaptureDate(buf, taken);
         await fs.writeFile(jpgPath, buf);
+        // A meter photo already read as .heic keeps its reading as .jpg (new name and bytes), so it isn't sent again
+        store ??= ReadingStore.load(dir);
+        if (store.carryOver(sha1(input), jpg, sha1(buf))) store.save();
         await fs.unlink(heicPath);
         actions.push({ file, reason: "converted to .jpg" });
       } catch (err) {
@@ -113,6 +118,8 @@ export async function scanDirectory(dir: string, year: number, self: string | nu
   ignored.sort((a, b) => a.file.localeCompare(b.file));
   return { dir, year, files, ignored };
 }
+
+const sha1 = (b: Buffer) => createHash("sha1").update(b).digest("hex");
 
 async function exists(p: string): Promise<boolean> {
   try {
