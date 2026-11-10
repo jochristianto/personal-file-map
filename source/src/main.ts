@@ -1,8 +1,8 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import { analyze } from "./analyze";
-import { loadOrCreateConfig } from "./config";
-import { locateFolder, selfName } from "./locate";
+import { CONFIG_NAME, DEFAULT_FOLDER, readConfig, resolveFolder, writeStarterConfig } from "./config";
+import { appFolder, detectYear, isTranslocated, selfName, TRANSLOCATED_MESSAGE } from "./locate";
 import { renderPdf } from "./pdf";
 import { configDir, isMac, openFile, showAlert } from "./platform";
 import { normalizeDirectory, outputFileName, scanDirectory } from "./scan";
@@ -12,33 +12,37 @@ const TITLE = "Bills Overview";
 async function main(): Promise<void> {
   const today = process.env.BILLS_TODAY ? new Date(`${process.env.BILLS_TODAY}T12:00:00`) : new Date();
   console.log(`${TITLE}\n`);
-  const located = locateFolder(today);
-  if ("error" in located) {
-    await showAlert(TITLE, located.error, "error");
-    process.exitCode = 1;
-    return;
-  }
-  const { dir, year } = located;
+
+  // The config sits next to the app; its "folder" says where the bills are (default: right here).
+  const appDir = process.env.BILLS_DIR || appFolder(); // BILLS_DIR: testing override for the app's folder
+  if (isTranslocated(appDir)) throw new Error(TRANSLOCATED_MESSAGE);
+  const existing = readConfig(appDir);
+  const folderSetting = existing?.folder ?? DEFAULT_FOLDER;
+  const dir = resolveFolder(appDir, folderSetting);
   console.log(`Folder: ${dir}`);
 
   try {
     await fs.readdir(dir);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
+    const where = folderSetting === DEFAULT_FOLDER ? "" : `\n\n("folder": "${folderSetting}" in ${CONFIG_NAME})`;
+    if (code === "ENOENT" || code === "ENOTDIR") throw new Error(`The bills folder doesn't exist:\n${dir}${where}`);
     const hint =
       isMac && (code === "EPERM" || code === "EACCES")
         ? "\n\nmacOS blocked access. Open System Settings → Privacy & Security → Files & Folders and allow “Bills Overview”, then run again."
         : "";
-    throw new Error(`Can't open the bills folder:\n${dir}${hint}`);
+    throw new Error(`Can't open the bills folder:\n${dir}${where}${hint}`);
   }
 
+  const year = detectYear(dir, today);
   const self = selfName();
   const housekeeping = await normalizeDirectory(dir, year, self);
   housekeeping.forEach((a) => console.log(`  ${a.file}: ${a.reason}`));
 
   const scan = await scanDirectory(dir, year, self);
-  const { config, created } = loadOrCreateConfig(dir, [...new Set(scan.files.map((f) => f.name))]);
-  if (created) console.log("  Created bills-overview.config.json (fill in a schedule per bill)");
+  const created = existing === null;
+  const config = existing ?? writeStarterConfig(appDir, DEFAULT_FOLDER, [...new Set(scan.files.map((f) => f.name))]);
+  if (created) console.log(`  Created ${CONFIG_NAME} (fill in a schedule per bill)`);
   const report = analyze(scan, {
     today,
     outputName: outputFileName(year),

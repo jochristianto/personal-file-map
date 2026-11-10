@@ -1,8 +1,10 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
-/** Lives next to the app and the bills. */
+/** Always lives next to the app. Its "folder" says where the bills are (default: the same folder). */
 export const CONFIG_NAME = "bills-overview.config.json";
+export const DEFAULT_FOLDER = "./";
 
 /**
  * How often a bill is expected:
@@ -22,6 +24,8 @@ export type ScheduleSpec =
   | { months?: number[]; every?: number; from?: number; until?: number };
 
 export interface BillsConfig {
+  /** Folder with the bill files, relative to the config file (or absolute, or ~/…). Default "./". */
+  folder: string;
   bills: Record<string, ScheduleSpec>;
 }
 
@@ -34,21 +38,19 @@ export type Resolved =
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const HELP = [
-  "Which months each bill is expected. Bills not listed (or null) are shown but never flagged.",
+  '"folder": where the bill files are. "./" = the folder this file is in. Also accepts a relative path ("../2026"), an absolute path, or "~/...". The PDF is written there too.',
+  '"bills": which months each bill is expected. Bills not listed (or null) are shown but never flagged.',
   'Values: "monthly", "quarterly" (Jan/Apr/Jul/Oct), "irregular", null, {"months": [1, 7]}, {"every": 2, "from": 3, "until": 12}.',
   'A key also covers every bill that starts with it: "Klaska PLN 01" covers "Klaska PLN 01 Photo 1 Before" etc. The longest matching key wins.',
 ];
 
-/** Reads the config. If there is none, writes a starter listing every bill (unscheduled) and returns it. */
-export function loadOrCreateConfig(dir: string, billNames: string[]): { config: BillsConfig; created: boolean } {
-  const file = path.join(dir, CONFIG_NAME);
+/** Reads the config next to the app. Returns null if there is none yet. */
+export function readConfig(appDir: string): BillsConfig | null {
   let raw: string;
   try {
-    raw = fs.readFileSync(file, "utf8");
+    raw = fs.readFileSync(path.join(appDir, CONFIG_NAME), "utf8");
   } catch {
-    const config: BillsConfig = { bills: Object.fromEntries([...billNames].sort().map((n) => [n, null])) };
-    fs.writeFileSync(file, JSON.stringify({ _help: HELP, ...config }, null, 2) + "\n");
-    return { config, created: true };
+    return null;
   }
 
   let parsed: unknown;
@@ -61,7 +63,25 @@ export function loadOrCreateConfig(dir: string, billNames: string[]): { config: 
   if (!bills || typeof bills !== "object" || Array.isArray(bills)) {
     throw new Error(`${CONFIG_NAME} needs a "bills" object, e.g. { "bills": { "PLN": "monthly" } }`);
   }
-  return { config: { bills: bills as Record<string, ScheduleSpec> }, created: false };
+  const folder = (parsed as { folder?: unknown }).folder ?? DEFAULT_FOLDER;
+  if (typeof folder !== "string" || !folder.trim()) {
+    throw new Error(`"folder" in ${CONFIG_NAME} must be a path, e.g. "./" or "/Users/me/Bills/2026"`);
+  }
+  return { folder, bills: bills as Record<string, ScheduleSpec> };
+}
+
+/** First run: write a starter config next to the app, listing every bill found as unscheduled. */
+export function writeStarterConfig(appDir: string, folder: string, billNames: string[]): BillsConfig {
+  const config: BillsConfig = { folder, bills: Object.fromEntries([...billNames].sort().map((n) => [n, null])) };
+  fs.writeFileSync(path.join(appDir, CONFIG_NAME), JSON.stringify({ _help: HELP, ...config }, null, 2) + "\n");
+  return config;
+}
+
+/** "./" → appDir, "../2026" → sibling, "~/Bills" → home, absolute paths as-is. */
+export function resolveFolder(appDir: string, folder: string): string {
+  const f = folder.trim();
+  const expanded = f === "~" || f.startsWith("~/") || f.startsWith("~\\") ? path.join(os.homedir(), f.slice(1)) : f;
+  return path.resolve(appDir, expanded);
 }
 
 /** Exact name, otherwise the longest key the name starts with (followed by a space). Case-insensitive. */

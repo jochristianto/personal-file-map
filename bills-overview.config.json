@@ -1,9 +1,11 @@
 {
   "_help": [
-    "Which months each bill is expected. Bills not listed (or null) are shown but never flagged.",
+    "\"folder\": where the bill files are. \"./\" = the folder this file is in. Also accepts a relative path (\"../2026\"), an absolute path, or \"~/...\". The PDF is written there too.",
+    "\"bills\": which months each bill is expected. Bills not listed (or null) are shown but never flagged.",
     "Values: \"monthly\", \"quarterly\" (Jan/Apr/Jul/Oct), \"irregular\", null, {\"months\": [1, 7]}, {\"every\": 2, \"from\": 3, \"until\": 12}.",
     "A key also covers every bill that starts with it: \"Klaska PLN 01\" covers \"Klaska PLN 01 Photo 1 Before\" etc. The longest matching key wins."
   ],
+  "folder": "./",
   "bills": {
     "Allianz": "monthly",
     "BPJS": "monthly",

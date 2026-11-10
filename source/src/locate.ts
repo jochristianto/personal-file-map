@@ -25,23 +25,14 @@ export function selfName(): string | null {
   return path.basename(process.execPath);
 }
 
-export type Located = { dir: string; year: number } | { error: string };
-
-export function locateFolder(today: Date): Located {
-  const dir = process.env.BILLS_DIR || appFolder(); // BILLS_DIR: testing override
-
-  if (dir.includes("/AppTranslocation/")) {
-    return {
-      error:
-        "macOS is running this app from a temporary location, so it can't see the files next to it.\n\n" +
-        "In Finder, drag the app into a different folder and back again, then double-click it once more.",
-    };
-  }
-  return { dir, year: detectYear(dir, today) };
-}
+/** macOS runs quarantined apps from a random read-only copy, where neither the config nor the bills are. */
+export const TRANSLOCATED_MESSAGE =
+  "macOS is running this app from a temporary location, so it can't see the files next to it.\n\n" +
+  "In Finder, drag the app into a different folder and back again, then double-click it once more.";
+export const isTranslocated = (dir: string) => dir.includes("/AppTranslocation/");
 
 /** Folder named like "2026" → 2026; otherwise the most common YYYY in the file names; else this year. */
-function detectYear(dir: string, today: Date): number {
+export function detectYear(dir: string, today: Date): number {
   const base = path.basename(dir);
   if (/^\d{4}$/.test(base)) return Number(base);
   const counts = new Map<number, number>();
