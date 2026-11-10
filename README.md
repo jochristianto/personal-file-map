@@ -2,6 +2,10 @@
 
 A double-click app for macOS and Windows that turns a folder of monthly bill files into a one-glance PDF report: **what's been paid, what's still due this month, and what's missing**.
 
+![Bill files named YYYYMM Name fly into a grid of bills by month and turn into checkmarks; this month's due bills and the missing months light up; then the PDF report builds itself with its totals and chart](docs/demo.gif)
+
+<sub>The numbers are from the sample bills made by <code>pnpm samples</code>.</sub>
+
 You keep doing what you already do: save each bill, receipt or payment screenshot as `YYYYMM Name.ext` in a folder. Double-click the app in that folder: a settings window opens where you pick the bills folder and say when each bill is due. Click **Generate report**, and `personal-file-map.output.pdf` opens with:
 
 - **Overview page:** paid vs. still due this month, missing files, year-to-date coverage, latest upload, a files-per-month chart, highlights, and a *Housekeeping* list of files that couldn't be read.
@@ -237,6 +241,8 @@ To run without double-clicking, e.g. on the samples: `BILLS_DIR=out pnpm dev`. T
 ├── SECURITY.md             how to report a vulnerability privately
 ├── LICENSE                 PolyForm Noncommercial 1.0.0
 ├── TRADEMARKS.md           what you may do with the name and icon
+├── docs/
+│   └── demo.gif            the animation at the top of this README (an animated explainer)
 ├── .github/
 │   ├── workflows/build.yml build on PRs; publish the "latest" release on merge to main
 │   ├── ISSUE_TEMPLATE/     bug report and feature request forms
