@@ -7,77 +7,47 @@ You keep doing what you already do: save each bill, receipt or payment screensho
 - **Overview page:** paid vs. still due this month, missing files, year-to-date coverage, latest upload, a files-per-month chart, highlights, and a *Housekeeping* list of files that couldn't be read.
 - **Matrix pages:** every bill (grouped by first word) × every month, marked *file found* / *due this month* / *missing*, with a status per bill.
 
-No terminal, Node or other installs are needed to run it: the runtime is inside the app. Generating the app (once, from this repo) does need Node, see below.
+No terminal, Node or other installs are needed to run it: the runtime is inside the app. Everything happens on your computer: the app never goes online, and your bills never leave the folder they're in.
 
----
+Free for personal and other noncommercial use; selling it, under this or any other name, is not allowed. See [License](#license).
 
-## Generate the app and sample data
+## Download
 
-The repo contains only source code. The apps and the sample bills are generated into **`out/`**, which is git-ignored.
+Get the latest build from the [**Releases page**](../../releases/latest). It's rebuilt automatically every time a change is merged into `main`.
 
-**Prerequisites:** macOS (the `.app` is assembled with macOS tools; the Windows `.exe` is cross-built on the Mac), [Node.js](https://nodejs.org) 24 (the version is in [`.nvmrc`](.nvmrc); with nvm, run `nvm use`), [pnpm](https://pnpm.io) 10 (`corepack enable` sets it up from `package.json`, or see [pnpm.io/installation](https://pnpm.io/installation)) and an internet connection for the first build. All commands run in the repo root.
-
-**1. Install the dependencies**
-
-```bash
-pnpm install
-```
-
-**2. Generate the sample data** (optional, to try the app without your own bills)
-
-```bash
-pnpm samples
-```
-
-This writes ~200 generic bills straight into `out/`, where the apps go too: monthly, quarterly, irregular and one-off bills for the current year up to the current month, plus a few deliberately wrong files that show up under *Housekeeping*. Running it again replaces them. For another year or "current" month, pass them explicitly:
-
-```bash
-pnpm samples 2026 11
-```
-
-**3. Generate the app**
-
-```bash
-pnpm build
-```
-
-This creates:
-
-| File | For |
+| Download | For |
 |---|---|
-| `out/bills-overview.app` | macOS on Apple Silicon |
-| `out/bills-overview-intel.app` | macOS on Intel |
-| `out/bills-overview.exe` | Windows x64 |
+| `bills-overview-macos-apple-silicon.zip` | macOS 11 or later on Apple Silicon (M1 and later) |
+| `bills-overview-macos-intel.zip` | macOS 11 or later on Intel |
+| `bills-overview-windows-x64.exe` | Windows 10 / 11, x64 |
 
-Nothing else is left behind: intermediate files are made in a temporary folder that's deleted after every build, even a failed one. The first build downloads the Node runtimes that get packed into the apps (about 60 MB each, cached afterwards), so it takes a minute; later builds are faster. [`config.default.json`](config.default.json) is compiled in: change it and rebuild to change the defaults new `config.local.json` files start from.
+Not sure which Mac you have? Apple menu → About This Mac: *Chip: Apple M…* means Apple Silicon, *Processor: Intel…* means Intel.
 
-**4. Try it on the samples**
+On macOS, double-click the `.zip` to unpack `bills-overview.app`. Then follow [Quick start](#quick-start). You can also [build the apps yourself](#build-from-source).
 
-The app and the sample bills are now side by side in `out/`, so just double-click `out/bills-overview.app` in Finder (or `out\bills-overview.exe` on Windows), or:
+## First launch
 
-```bash
-open out/bills-overview.app
-```
+The apps are free and not signed with a paid Apple or Microsoft certificate, so both systems warn the first time you open them.
 
-The settings window opens with every sample bill listed as *monthly*. Click **Generate report**: the report opens and is saved as `out/bills-overview.output.pdf`, next to a new `out/config.local.json`.
+- **macOS** says the app "can't be opened" or that Apple "could not verify" it. Click **Done** (not *Move to Trash*), open **System Settings → Privacy & Security**, scroll down to *"Bills Overview" was blocked…* and click **Open Anyway**, then confirm. You only need to do this once per copy of the app.
+  If you're comfortable with Terminal, `xattr -dr com.apple.quarantine /path/to/bills-overview.app` does the same.
+- **macOS** may ask to let *Bills Overview* access files (for example on Google Drive). Click **Allow**. If you said no, re-enable it under System Settings → Privacy & Security → Files & Folders.
+- **macOS**: if the app says it's "running from a temporary location", drag it to another folder and back in Finder, then open it again.
+- **Windows** may show a SmartScreen warning: *More info → Run anyway*. A console window flashes as it starts.
+- **The settings window** is a page the app serves on your own computer (nothing goes online), shown as a standalone app window by Microsoft Edge (Windows) or Google Chrome / Edge / Brave (macOS) with a profile of its own, so your normal browser is untouched. Without one of those, it opens in your default browser instead.
 
-Everything generated (`out/`, `node_modules/`, plus any `config.local.json` or `bills-overview.output.pdf` the app writes) is git-ignored. Delete it any time and generate it again.
+Each release lists SHA-256 checksums in `SHA256SUMS.txt` if you want to check your download.
 
 ## Quick start
 
-1. Get the app: **`bills-overview.app`** (macOS, Apple Silicon) or **`bills-overview.exe`** (Windows x64), see [Generate the app](#generate-the-app-and-sample-data).
+1. Get the app: **`bills-overview.app`** (macOS) or **`bills-overview.exe`** (Windows) from the [Releases page](../../releases/latest), see [Download](#download).
 2. Copy it **into the folder with your bills**, e.g. `My Drive/Bills/Monthly Bills/2026`.
 3. **Double-click it.** The settings window opens (see [Settings window](#settings-window)) with every bill it found set to *monthly*. Change the bills that aren't monthly.
 4. Click **Generate report**. Only now is anything written: your settings are saved to `config.local.json` next to the app, and `bills-overview.output.pdf` is written and opened. Run it whenever you add files; the window opens with your saved settings, and the PDF is overwritten each time. Closing the window quits the app.
 
 For a new year, copy the app and your `config.local.json` into the new year's folder.
 
-**First launch notes**
-
-- **macOS** may ask to let *Bills Overview* access files (for example on Google Drive). Click **Allow**. If you said no, re-enable it under System Settings → Privacy & Security → Files & Folders.
-- **macOS**: if the app says it's "running from a temporary location", drag it to another folder and back in Finder, then open it again.
-- **Windows** may show a SmartScreen warning because the app isn't signed: *More info → Run anyway*. A console window flashes as it starts.
-- **The settings window** is a page the app serves on your own computer (nothing goes online), shown as a standalone app window by Microsoft Edge (Windows) or Google Chrome / Edge / Brave (macOS) with a profile of its own, so your normal browser is untouched. Without one of those, it opens in your default browser instead.
+The first time, macOS or Windows will warn that the app is from an unidentified developer; see [First launch](#first-launch).
 
 ## Naming your files
 
@@ -165,13 +135,73 @@ Which months each bill is expected. Nothing is guessed: a bill is only flagged a
 - **New bills are added for you**: the window lists bills that no key covers yet as *monthly* (badge **New**), and they're saved when you generate. A bill whose file appears after the window scanned the folder is still appended as `"monthly"` and mentioned under *Housekeeping*.
 - Keys that match no bill are listed under *Housekeeping*.
 
+## Build from source
+
+The [Releases page](../../releases/latest) has ready-made apps. To build them yourself, or to work on the code: the repo contains only source code, and the apps and the sample bills are generated into **`out/`**, which is git-ignored. [CONTRIBUTING.md](CONTRIBUTING.md) has more for contributors.
+
+**Prerequisites:** macOS (the `.app` is assembled with macOS tools; the Windows `.exe` is cross-built on the Mac), [Node.js](https://nodejs.org) 24 (the version is in [`.nvmrc`](.nvmrc); with nvm, run `nvm use`), [pnpm](https://pnpm.io) 10 (`corepack enable` sets it up from `package.json`, or see [pnpm.io/installation](https://pnpm.io/installation)) and an internet connection for the first build. All commands run in the repo root.
+
+**1. Install the dependencies**
+
+```bash
+pnpm install
+```
+
+**2. Generate the sample data** (optional, to try the app without your own bills)
+
+```bash
+pnpm samples
+```
+
+This writes ~200 generic bills straight into `out/`, where the apps go too: monthly, quarterly, irregular and one-off bills for the current year up to the current month, plus a few deliberately wrong files that show up under *Housekeeping*. Running it again replaces them. For another year or "current" month, pass them explicitly:
+
+```bash
+pnpm samples 2026 11
+```
+
+**3. Generate the app**
+
+```bash
+pnpm build
+```
+
+This creates:
+
+| File | For |
+|---|---|
+| `out/bills-overview.app` | macOS on Apple Silicon |
+| `out/bills-overview-intel.app` | macOS on Intel |
+| `out/bills-overview.exe` | Windows x64 |
+
+Nothing else is left behind: intermediate files are made in a temporary folder that's deleted after every build, even a failed one. The first build downloads the Node runtimes that get packed into the apps (about 60 MB each, cached afterwards), so it takes a minute; later builds are faster. [`config.default.json`](config.default.json) is compiled in: change it and rebuild to change the defaults new `config.local.json` files start from.
+
+**4. Try it on the samples**
+
+The app and the sample bills are now side by side in `out/`, so just double-click `out/bills-overview.app` in Finder (or `out\bills-overview.exe` on Windows), or:
+
+```bash
+open out/bills-overview.app
+```
+
+The settings window opens with every sample bill listed as *monthly*. Click **Generate report**: the report opens and is saved as `out/bills-overview.output.pdf`, next to a new `out/config.local.json`.
+
+Everything generated (`out/`, `node_modules/`, plus any `config.local.json` or `bills-overview.output.pdf` the app writes) is git-ignored. Delete it any time and generate it again.
+
+### Automatic builds
+
+[`.github/workflows/build.yml`](.github/workflows/build.yml) runs the same steps on GitHub Actions (macOS runner): `pnpm typecheck` and `pnpm build`.
+
+- **Every pull request** is built, and the apps are attached to the run as an artifact for 14 days, so reviewers can try them.
+- **Every merge to `main`** also replaces the **`latest`** release: the tag moves to the merged commit and the downloads are swapped for the new build. The release title shows the `package.json` version and the commit.
+- It can also be started by hand from the *Actions* tab (*Build → Run workflow*); on `main` that publishes too.
+
 ## Development
 
 All commands run in the repo root (after `pnpm install`):
 
 | Command | What |
 |---|---|
-| `pnpm build` | Generate `out/bills-overview.app` and `out/bills-overview.exe` (see [above](#generate-the-app-and-sample-data)) |
+| `pnpm build` | Generate `out/bills-overview.app` and `out/bills-overview.exe` (see [Build from source](#build-from-source)) |
 | `pnpm samples [year] [month]` | Generate sample bills in `out/` |
 | `pnpm typecheck` | TypeScript check |
 | `pnpm dev` | Bundle and run once with Node, without packaging (nothing is left behind) |
@@ -200,6 +230,15 @@ To run without double-clicking, e.g. on the samples: `BILLS_DIR=out pnpm dev`. T
 ```
 .
 ├── README.md               ← you are here
+├── CONTRIBUTING.md         how to set up, develop and send a pull request
+├── CODE_OF_CONDUCT.md
+├── SECURITY.md             how to report a vulnerability privately
+├── LICENSE                 PolyForm Noncommercial 1.0.0
+├── TRADEMARKS.md           what you may do with the name and icon
+├── .github/
+│   ├── workflows/build.yml build on PRs; publish the "latest" release on merge to main
+│   ├── ISSUE_TEMPLATE/     bug report and feature request forms
+│   └── pull_request_template.md
 ├── package.json            scripts and dependencies (pnpm)
 ├── pnpm-lock.yaml
 ├── config.default.json     defaults compiled into the app
@@ -239,3 +278,19 @@ To run without double-clicking, e.g. on the samples: `BILLS_DIR=out pnpm dev`. T
 | A file is missing from the report | Look under *Housekeeping* on page 1; it says why each skipped file was skipped. |
 
 The result of the last run (or the error) is logged to `last-run.log` in `~/Library/Application Support/Bills Overview/` (macOS) or `%APPDATA%\Bills Overview\` (Windows).
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up the project and what a good change looks like, and the [Code of Conduct](CODE_OF_CONDUCT.md). Please report security problems privately, see [SECURITY.md](SECURITY.md).
+
+## License
+
+Bills Overview is **source-available** under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+- ✅ **You may** use it for free for personal and other noncommercial purposes (charities, schools, public institutions included), read and change the code, and share it, changed or not, for free, with the license included.
+- ❌ **You may not** sell it, charge for it, include it in a paid product or service, or use it commercially in any other way, **whether it's called "Bills Overview" or anything else**. Renaming a copy doesn't change what it is.
+- The **name "Bills Overview" and the app icon** aren't covered by the license: modified copies you share must use a different name and icon. See [TRADEMARKS.md](TRADEMARKS.md).
+
+Because it limits commercial use, this isn't an "open source" license in the [OSI](https://opensource.org/osd) sense. For commercial use, open an issue to ask about a separate license.
+
+Copyright © 2026 Jonathan Christianto.

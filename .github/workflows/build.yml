@@ -1,0 +1,110 @@
+# Builds the apps on every pull request, and on every merge to main (or manual run on main) publishes them as the
+# "latest" GitHub release (the tag is moved to the merged commit, the assets are replaced).
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One run per branch at a time. A new push to a PR cancels its older run; on main runs queue
+# instead, so a release update is never cut off halfway.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build apps
+    # The .app bundles are assembled with macOS tools (sips, iconutil, codesign); the .exe is cross-built.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4 # version from "packageManager" in package.json
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # The Node runtimes that pkg packs into the apps (~60 MB each)
+      - name: Cache pkg runtimes
+        uses: actions/cache@v4
+        with:
+          path: ~/.pkg-cache
+          key: pkg-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pkg-${{ runner.os }}-
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm build
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          mkdir dist
+          # ditto keeps the bundle's permissions and code signature intact, unlike zip
+          ditto -c -k --keepParent out/bills-overview.app dist/bills-overview-macos-apple-silicon.zip
+          ditto -c -k --keepParent out/bills-overview-intel.app dist/bills-overview-macos-intel.zip
+          cp out/bills-overview.exe dist/bills-overview-windows-x64.exe
+          (cd dist && shasum -a 256 * > SHA256SUMS.txt)
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bills-overview-${{ github.sha }}
+          path: dist/
+          retention-days: 14
+          if-no-files-found: error
+
+  release:
+    name: Publish latest release
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: bills-overview-${{ github.sha }}
+          path: dist
+
+      - name: Replace the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          short=${GITHUB_SHA::7}
+          cat > notes.md <<EOF
+          Automatic build of \`main\` at ${short} (version ${version}), built $(date -u '+%Y-%m-%d %H:%M UTC').
+
+          | Download | For |
+          |---|---|
+          | \`bills-overview-macos-apple-silicon.zip\` | macOS on Apple Silicon (M1 and later) |
+          | \`bills-overview-macos-intel.zip\` | macOS on Intel |
+          | \`bills-overview-windows-x64.exe\` | Windows 10/11, x64 |
+
+          The apps aren't notarized or signed with a paid certificate, so macOS and Windows warn on first launch.
+          See [First launch](https://github.com/${GITHUB_REPOSITORY}#first-launch) in the README.
+
+          \`SHA256SUMS.txt\` lists the checksums of the files above.
+          EOF
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          git push --delete origin latest 2>/dev/null || true # a tag left without its release
+          gh release create latest dist/* \
+            --title "Bills Overview ${version} (latest build, ${short})" \
+            --notes-file notes.md \
+            --target "$GITHUB_SHA" \
+            --latest

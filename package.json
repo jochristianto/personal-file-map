@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "description": "Double-click generator for a monthly bills overview PDF (macOS + Windows)",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "Jonathan Christianto",
   "scripts": {
     "dev": "node build.mjs --dev",
     "typecheck": "tsc --noEmit",
