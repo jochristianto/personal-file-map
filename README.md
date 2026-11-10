@@ -7,13 +7,64 @@ You keep doing what you already do: save each bill, receipt or payment screensho
 - **Overview page:** paid vs. still due this month, missing files, year-to-date coverage, latest upload, a files-per-month chart, highlights, and a *Housekeeping* list of files that couldn't be read.
 - **Matrix pages:** every bill (grouped by first word) × every month, marked *file found* / *due this month* / *missing*, with a status per bill.
 
-No terminal, Node or other installs are needed to run it: the runtime is inside the app.
+No terminal, Node or other installs are needed to run it: the runtime is inside the app. Generating the app (once, from this repo) does need Node, see below.
 
 ---
 
+## Generate the app and sample data
+
+The repo contains only source code. The apps and the sample bills are generated.
+
+**Prerequisites:** macOS (the `.app` is assembled with macOS tools; the Windows `.exe` is cross-built on the Mac), [Node.js](https://nodejs.org) 24 (the version is in [`.nvmrc`](.nvmrc); with nvm, run `nvm use` in the repo root) and an internet connection for the first build.
+
+**1. Install the dependencies**
+
+```bash
+cd source
+npm install
+```
+
+**2. Generate the sample data** (optional, to try the app without your own bills)
+
+```bash
+npm run samples
+```
+
+This writes ~200 generic bills to `samples/` in the repo root: monthly, quarterly, irregular and one-off bills for the current year up to the current month, plus a few deliberately wrong files that show up under *Housekeeping*. Running it again replaces them. For another year or "current" month, pass them explicitly:
+
+```bash
+node scripts/make-samples.mjs 2026 11
+```
+
+**3. Generate the app**
+
+```bash
+npm run build
+```
+
+This creates, in the repo root:
+
+| File | For |
+|---|---|
+| `bills-overview.app` | macOS on Apple Silicon |
+| `bills-overview.exe` | Windows x64 |
+
+An Intel Mac build is left in `source/dist/bills-overview-intel.app`. The first build downloads the Node runtimes that get packed into the apps (about 60 MB each, cached afterwards), so it takes a minute; later builds are faster. [`source/config.default.json`](source/config.default.json) is compiled in: change it and rebuild to change the defaults new `config.local.json` files start from.
+
+**4. Try it on the samples**
+
+```bash
+cp -R ../bills-overview.app ../samples/
+open ../samples/bills-overview.app
+```
+
+Or copy the app into `samples/` in Finder and double-click it. The report opens and is saved as `samples/bills-overview.output.pdf`, next to a new `samples/config.local.json`. On Windows, copy `bills-overview.exe` into `samples\` and double-click it.
+
+Everything generated (`samples/`, the apps, `config.local.json`, the PDFs, `source/dist`, `source/node_modules`) is git-ignored. Delete it any time and generate it again.
+
 ## Quick start
 
-1. Get the app: **`bills-overview.app`** (macOS, Apple Silicon) or **`bills-overview.exe`** (Windows x64). They're built from this repo, see [Building](#building-from-source).
+1. Get the app: **`bills-overview.app`** (macOS, Apple Silicon) or **`bills-overview.exe`** (Windows x64), see [Generate the app](#generate-the-app-and-sample-data).
 2. Copy it **into the folder with your bills**, e.g. `My Drive/Bills/Monthly Bills/2026`.
 3. **Double-click it.** On the first run it creates `config.local.json` next to itself (every bill found set to *monthly*), writes `bills-overview.output.pdf` and opens it.
 4. Adjust `config.local.json` for bills that aren't monthly (see [Configuration](#configuration)) and double-click again. Run it whenever you add files; the PDF is overwritten each time.
@@ -89,43 +140,25 @@ Which months each bill is expected. Nothing is guessed: a bill is only flagged a
 - **New bills are added for you**: every run appends bills that no key covers yet as `"monthly"` and says so under *Housekeeping*. Your existing entries, including ones you set to `null`, are never changed.
 - A typo in the JSON stops the run with the line and column. Invalid values and keys that match no bill are listed under *Housekeeping*.
 
-## Try it with the samples
+## Development
 
-[`samples/`](samples) holds ~200 generic bills (monthly, quarterly, irregular and one-off, plus a few deliberately wrong files) for the current year. Either:
-
-- copy `bills-overview.app` / `.exe` **into `samples/`** and double-click it, or
-- double-click the app in the repo root once, then set `"folder": "./samples"` in the `config.local.json` it created and run it again.
-
-The report appears as `samples/bills-overview.output.pdf`. Regenerate the samples with `cd source && npm run samples`.
-
-## Building from source
-
-Requirements: **macOS** (the `.app` is assembled with macOS tools; the Windows `.exe` is cross-built) and **Node.js 24** (see [`.nvmrc`](.nvmrc)).
-
-```bash
-cd source
-npm install
-npm run build
-```
-
-This creates `bills-overview.app` and `bills-overview.exe` in the repo root (an Intel Mac build is left in `source/dist/bills-overview-intel.app`). `source/config.default.json` is compiled into the app; change it and rebuild to change the defaults new `config.local.json` files start from.
-
-Other scripts (run in `source/`):
+All commands run in `source/` (after `npm install`):
 
 | Command | What |
 |---|---|
-| `npm run samples` | Regenerate `samples/` (optionally `node scripts/make-samples.mjs 2026 11` for a given year and "current" month) |
+| `npm run build` | Generate `bills-overview.app` and `bills-overview.exe` (see [above](#generate-the-app-and-sample-data)) |
+| `npm run samples` | Generate `samples/` (or `node scripts/make-samples.mjs <year> <month>`) |
 | `npm run typecheck` | TypeScript check |
-| `npm run dev` | Bundle and run once with Node (no packaging) |
+| `npm run dev` | Bundle and run once with Node, without packaging |
 
-For testing without double-clicking: `BILLS_DIR=/some/folder BILLS_NO_OPEN=1 node dist/bills-overview.cjs` (after `node build.mjs --bundle-only`). `BILLS_DIR` stands in for the app's folder; `BILLS_TODAY=2026-11-10` fakes today's date.
+To run without double-clicking: `node build.mjs --bundle-only`, then `BILLS_DIR=../samples BILLS_NO_OPEN=1 node dist/bills-overview.cjs`. `BILLS_DIR` stands in for the app's folder; `BILLS_TODAY=2026-11-10` fakes today's date.
 
 ## Project structure
 
 ```
 .
 ├── README.md                 ← you are here
-├── samples/                  generic sample bills (committed)
+├── samples/                  generated sample bills (npm run samples, git-ignored)
 ├── source/
 │   ├── config.default.json   defaults compiled into the app
 │   ├── build.mjs             bundle (esbuild) → executables (pkg) → .app / .exe
@@ -140,11 +173,9 @@ For testing without double-clicking: `BILLS_DIR=/some/folder BILLS_NO_OPEN=1 nod
 │       ├── analyze.ts        paid / due / missing per bill and month, stats
 │       ├── pdf.ts            the report (pdfkit, Inter font)
 │       └── platform.ts       dialogs and opening files on macOS / Windows
-├── bills-overview.app        built app (git-ignored)
-└── bills-overview.exe        built app (git-ignored)
+├── bills-overview.app        generated app (npm run build, git-ignored)
+└── bills-overview.exe        generated app (npm run build, git-ignored)
 ```
-
-Git ignores the built apps, `config.local.json` and `bills-overview.output.pdf` wherever they appear.
 
 ## Troubleshooting
 

@@ -7,13 +7,16 @@ bills-overview.app
 bills-overview.exe
 
 # ── Generated / personal ──────────────────────────────
-# Your own settings, created on first run (config.default.json is committed)
+# Sample bills (regenerate with: cd source && npm run samples)
+/samples/
+
+# Your own settings, created on first run (source/config.default.json is committed)
 config.local.json
 
-# Report written by the app on every run (e.g. samples/bills-overview.output.pdf)
+# Report written by the app on every run
 bills-overview.output.pdf
 
-# Real bill files dropped into the repo root (generic ones live in samples/, which is committed)
+# Real bill files dropped into the repo root
 /[0-9][0-9][0-9][0-9][0-9][0-9] *
 
 # ── OS clutter ────────────────────────────────────────
