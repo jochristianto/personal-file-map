@@ -29,7 +29,7 @@ pnpm install
 pnpm samples
 ```
 
-This writes ~200 generic bills to `out/samples/`: monthly, quarterly, irregular and one-off bills for the current year up to the current month, plus a few deliberately wrong files that show up under *Housekeeping*. Running it again replaces them. For another year or "current" month, pass them explicitly:
+This writes ~200 generic bills straight into `out/`, where the apps go too: monthly, quarterly, irregular and one-off bills for the current year up to the current month, plus a few deliberately wrong files that show up under *Housekeeping*. Running it again replaces them. For another year or "current" month, pass them explicitly:
 
 ```bash
 pnpm samples 2026 11
@@ -52,12 +52,13 @@ An Intel Mac build and the other intermediates are left in `out/build/` (`out/bu
 
 **4. Try it on the samples**
 
+The app and the sample bills are now side by side in `out/`, so just double-click `out/bills-overview.app` in Finder (or `out\bills-overview.exe` on Windows), or:
+
 ```bash
-cp -R out/bills-overview.app out/samples/
-open out/samples/bills-overview.app
+open out/bills-overview.app
 ```
 
-Or copy the app into `out/samples/` in Finder and double-click it. The report opens and is saved as `out/samples/bills-overview.output.pdf`, next to a new `out/samples/config.local.json`. On Windows, copy `bills-overview.exe` into `out\samples\` and double-click it.
+The report opens and is saved as `out/bills-overview.output.pdf`, next to a new `out/config.local.json`.
 
 Everything generated (`out/`, `node_modules/`, plus any `config.local.json` or `bills-overview.output.pdf` the app writes) is git-ignored. Delete it any time and generate it again.
 
@@ -146,11 +147,11 @@ All commands run in the repo root (after `pnpm install`):
 | Command | What |
 |---|---|
 | `pnpm build` | Generate `out/bills-overview.app` and `out/bills-overview.exe` (see [above](#generate-the-app-and-sample-data)) |
-| `pnpm samples [year] [month]` | Generate `out/samples/` |
+| `pnpm samples [year] [month]` | Generate sample bills in `out/` |
 | `pnpm typecheck` | TypeScript check |
 | `pnpm dev` | Bundle and run once with Node, without packaging |
 
-To run without double-clicking: `node build.mjs --bundle-only`, then `BILLS_DIR=out/samples BILLS_NO_OPEN=1 node out/build/bills-overview.cjs`. `BILLS_DIR` stands in for the app's folder; `BILLS_TODAY=2026-11-10` fakes today's date.
+To run without double-clicking: `node build.mjs --bundle-only`, then `BILLS_DIR=out BILLS_NO_OPEN=1 node out/build/bills-overview.cjs`. `BILLS_DIR` stands in for the app's folder; `BILLS_TODAY=2026-11-10` fakes today's date.
 
 ### How it works
 
@@ -178,7 +179,7 @@ To run without double-clicking: `node build.mjs --bundle-only`, then `BILLS_DIR=
 ├── build.mjs               bundle (esbuild) → executables (pkg) → .app / .exe in out/
 ├── scripts/
 │   ├── icon.mjs            draws the app icon
-│   └── make-samples.mjs    generates out/samples/
+│   └── make-samples.mjs    generates the sample bills in out/
 ├── src/
 │   ├── main.ts             entry point: configs → scan → analyze → PDF → open
 │   ├── config.ts           config.local.json / defaults, schedules, key matching
@@ -190,7 +191,9 @@ To run without double-clicking: `node build.mjs --bundle-only`, then `BILLS_DIR=
 └── out/                    generated, git-ignored
     ├── bills-overview.app  pnpm build
     ├── bills-overview.exe  pnpm build
-    ├── samples/            pnpm samples
+    ├── YYYYMM Name.*       sample bills (pnpm samples)
+    ├── config.local.json   written by the app on first run
+    ├── bills-overview.output.pdf   the report, written by the app
     └── build/              build intermediates (incl. the Intel Mac app)
 ```
 
