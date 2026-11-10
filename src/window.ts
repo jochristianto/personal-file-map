@@ -23,6 +23,7 @@ import { detectYear, selfName } from "./locate";
 import { LOGS_FOLDER } from "./ailog";
 import type { InstanceLock } from "./lock";
 import { aiTotals, editReading, electricity, meterPhotos, ReadingStore, READINGS_NAME, validateMeters, type Electricity, type MeterSettings } from "./meters";
+import { viewablePhoto } from "./photo";
 import { chooseFolder, isWin, openAppWindow, openFile, openPrivacySettings, revealFile, showAlert, writeLog } from "./platform";
 import { isProvider, keyStatus, mergeKeys, PROVIDERS, type PendingKeys } from "./reader";
 import { scanDirectory } from "./scan";
@@ -170,6 +171,26 @@ export async function runSettingsWindow(opts: WindowOptions): Promise<void> {
           } finally {
             busy = false;
           }
+        }
+
+        case "GET /api/meters/photo": {
+          // A meter photo for the window's viewer: only photo files inside the bills folder
+          const folder = url.searchParams.get("folder")?.trim() || DEFAULT_FOLDER;
+          const file = url.searchParams.get("file") ?? "";
+          const dir = resolveFolder(opts.appDir, folder);
+          const abs = path.resolve(dir, file);
+          const rel = path.relative(dir, abs);
+          const ext = path.extname(abs).slice(1).toLowerCase();
+          if (!file || rel.startsWith("..") || path.isAbsolute(rel) || !["jpg", "jpeg", "png", "heic"].includes(ext)) return send(res, 400, "Not a photo in the bills folder.");
+          let buf: Buffer;
+          try {
+            buf = await fs.promises.readFile(abs);
+          } catch {
+            return send(res, 404, "That photo isn't in the bills folder any more.");
+          }
+          const { body, type } = await viewablePhoto(buf, ext);
+          res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-store" });
+          return res.end(body);
         }
 
         case "GET /api/preview":

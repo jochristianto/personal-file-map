@@ -44,6 +44,19 @@ export async function preparePhoto(buf: Buffer, ext: string): Promise<{ jpeg: Bu
   return { jpeg: out, width: upright.width, height: upright.height };
 }
 
+/**
+ * The photo as the window can show it: JPG and PNG as they are (the browser applies the EXIF rotation),
+ * HEIC converted to JPEG, since browsers other than Safari can't show it.
+ */
+export async function viewablePhoto(buf: Buffer, ext: string): Promise<{ body: Buffer; type: string }> {
+  if (ext === "png") return { body: buf, type: "image/png" };
+  if (ext === "heic") {
+    const { default: convert } = await import("heic-convert");
+    buf = Buffer.from(await convert({ buffer: buf as unknown as ArrayBuffer, format: "JPEG", quality: 0.9 }));
+  }
+  return { body: buf, type: "image/jpeg" };
+}
+
 async function exifOrientation(buf: Buffer): Promise<number> {
   try {
     const tags = await exifr.parse(buf, { pick: ["Orientation"], translateValues: false });
