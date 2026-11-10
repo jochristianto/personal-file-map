@@ -46,9 +46,10 @@ This creates:
 | File | For |
 |---|---|
 | `out/bills-overview.app` | macOS on Apple Silicon |
+| `out/bills-overview-intel.app` | macOS on Intel |
 | `out/bills-overview.exe` | Windows x64 |
 
-An Intel Mac build and the other intermediates are left in `out/build/` (`out/build/bills-overview-intel.app`). The first build downloads the Node runtimes that get packed into the apps (about 60 MB each, cached afterwards), so it takes a minute; later builds are faster. [`config.default.json`](config.default.json) is compiled in: change it and rebuild to change the defaults new `config.local.json` files start from.
+Nothing else is left behind: intermediate files are made in a temporary folder that's deleted after every build, even a failed one. The first build downloads the Node runtimes that get packed into the apps (about 60 MB each, cached afterwards), so it takes a minute; later builds are faster. [`config.default.json`](config.default.json) is compiled in: change it and rebuild to change the defaults new `config.local.json` files start from.
 
 **4. Try it on the samples**
 
@@ -149,9 +150,9 @@ All commands run in the repo root (after `pnpm install`):
 | `pnpm build` | Generate `out/bills-overview.app` and `out/bills-overview.exe` (see [above](#generate-the-app-and-sample-data)) |
 | `pnpm samples [year] [month]` | Generate sample bills in `out/` |
 | `pnpm typecheck` | TypeScript check |
-| `pnpm dev` | Bundle and run once with Node, without packaging |
+| `pnpm dev` | Bundle and run once with Node, without packaging (nothing is left behind) |
 
-To run without double-clicking: `node build.mjs --bundle-only`, then `BILLS_DIR=out BILLS_NO_OPEN=1 node out/build/bills-overview.cjs`. `BILLS_DIR` stands in for the app's folder; `BILLS_TODAY=2026-11-10` fakes today's date.
+To run without double-clicking, e.g. on the samples: `BILLS_DIR=out BILLS_NO_OPEN=1 pnpm dev`. `BILLS_DIR` stands in for the app's folder (without it, the current folder is used); `BILLS_TODAY=2026-11-10` fakes today's date; `BILLS_NO_OPEN=1` skips opening the PDF.
 
 ### How it works
 
@@ -164,7 +165,7 @@ To run without double-clicking: `node build.mjs --bundle-only`, then `BILLS_DIR=
 5. **Render** (`pdf.ts`): A4 landscape PDF with pdfkit and embedded Inter fonts; overview page plus a paginated matrix.
 6. **Write and open** `bills-overview.output.pdf` (`platform.ts` handles dialogs and opening files per OS).
 
-`build.mjs` bundles everything into `out/build/bills-overview.cjs` with esbuild (fonts and `config.default.json` inlined; pdfkit's `import.meta.url` is shimmed for CJS), packages it with `@yao-pkg/pkg` for macOS arm64/x64 and Windows x64, wraps the macOS binaries in `.app` bundles (icon from `scripts/icon.mjs`, ad-hoc signed), and puts the Apple Silicon `.app` and the `.exe` in `out/`. Anything read at runtime must be inside the bundle: the packaged app can't read files from `node_modules`.
+`build.mjs` bundles everything into one JS file with esbuild (fonts and `config.default.json` inlined; pdfkit's `import.meta.url` is shimmed for CJS), packages it with `@yao-pkg/pkg` for macOS arm64/x64 and Windows x64, wraps the macOS binaries in `.app` bundles (icon from `scripts/icon.mjs`, ad-hoc signed), and puts both `.app` bundles and the `.exe` in `out/`. All intermediates live in a temporary folder that's removed when the build ends. Anything read at runtime must be inside the bundle: the packaged app can't read files from `node_modules`.
 
 `scripts/make-samples.mjs` draws its own JPG/PNG images (`jpeg-js`, `pngjs`) and PDF receipts, so it runs anywhere Node does.
 
@@ -189,12 +190,12 @@ To run without double-clicking: `node build.mjs --bundle-only`, then `BILLS_DIR=
 │   ├── pdf.ts              the report (pdfkit, Inter font)
 │   └── platform.ts         dialogs and opening files on macOS / Windows
 └── out/                    generated, git-ignored
-    ├── bills-overview.app  pnpm build
+    ├── bills-overview.app  pnpm build (Apple Silicon)
+    ├── bills-overview-intel.app   pnpm build (Intel Mac)
     ├── bills-overview.exe  pnpm build
     ├── YYYYMM Name.*       sample bills (pnpm samples)
     ├── config.local.json   written by the app on first run
-    ├── bills-overview.output.pdf   the report, written by the app
-    └── build/              build intermediates (incl. the Intel Mac app)
+    └── bills-overview.output.pdf   the report, written by the app
 ```
 
 ## Troubleshooting
