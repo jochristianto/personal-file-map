@@ -1,11 +1,11 @@
 /** A file in the year folder that matched `YYYYMM Name.ext`. */
 export interface BillFile {
   file: string;
-  /** The bill: the name without its transaction number and photo details ("Klaska PLN 02 Photo 1 Before" → "Klaska PLN"). */
+  /** The bill: the name before "#N", a document number or "Photo" ("Klaska PLN #2 Before" → "Klaska PLN", "PBB Klaska 1 SPPT" → "PBB Klaska"). */
   name: string;
   /** Everything after YYYYMM, as written. */
   fullName: string;
-  /** Which payment/top-up of the month this file is about ("02" → 2), or null when the name has no number. */
+  /** Which payment/top-up of the month this file is about ("#2" → 2), or null without a "#N". */
   txn: number | null;
   month: number; // 1..12
   ext: string;

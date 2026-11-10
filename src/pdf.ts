@@ -641,7 +641,7 @@ function drawTable(r: Painter, rep: Report, items: Item[]) {
       b.cells.forEach((state, i) => {
         const cx = monthX + COL.month * i + COL.month / 2;
         r.glyph(state, cx, cy);
-        // Two or more payments/top-ups that month (e.g. "Klaska PLN 01 …" and "Klaska PLN 02 …")
+        // Two or more payments/top-ups that month (e.g. "Klaska PLN #1 …" and "Klaska PLN #2 …")
         if (b.transactions[i] > 1) r.text(`${b.transactions[i]}`, cx + 6.2, cy - 4.2, { size: 5.6, weight: "bold", color: C.greenText });
       });
       const n = b.paidMonths.length;

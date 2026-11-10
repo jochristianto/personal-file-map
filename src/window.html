@@ -277,7 +277,7 @@
           <input type="search" id="filter" placeholder="Filter bills" aria-label="Filter bills">
         </div>
       </div>
-      <p class="help">A number after the name counts the payments or top-ups in a month, and <code>Photo …</code> describes the picture: <code>Klaska PLN 01 Photo 1 Before</code> and <code>Klaska PLN 02 Photo 3 After</code> are both the bill <code>Klaska PLN</code>, with 2 transactions that month (the small number on the month). A name also covers every bill that starts with it; when several names match, the longest wins; case doesn't matter. A scheduled past month without a file is <em>missing</em>, the current month is <em>due</em>.</p>
+      <p class="help">A bill's name ends at a number: <code>#1</code>, <code>#2</code> mark separate payments or top-ups in a month (<code>Klaska PLN #1 Before</code>, <code>Klaska PLN #2 After</code>: 2 that month, the small number on the month), and a plain number is a document of the same payment (<code>PBB Klaska 1 SPPT</code>, <code>PBB Klaska 3 Lunas</code>: one bill, one payment). A name also covers every bill that starts with it; when several names match, the longest wins; case doesn't matter. A scheduled past month without a file is <em>missing</em>, the current month is <em>due</em>.</p>
       <div class="legend">
         <span><i style="background:var(--on)"></i>expected</span>
         <span><i style="background:var(--dot);border-radius:50%;width:6px;height:6px;vertical-align:1px"></i>file found</span>
@@ -327,7 +327,7 @@
         <p class="help">Reads the kWh on photos of a prepaid electricity meter, so the report shows how much you use. Turn on <span class="zap-inline" id="zapHelp"></span> next to the meter's bill (e.g. <code>Klaska PLN</code>) to mark its photos.</p>
         <div class="note">Name the photos of each top-up like this:</div>
         <ul class="examples" id="meterExamples"></ul>
-        <p class="help" id="meterNaming">The month (<code>YYYYMM</code>), the meter's name, the top-up's number in that month (<code>01</code>; a second top-up that month is <code>02</code>), then anything. Use the original photos, not screenshots of them: the time each photo was taken is read from the file.</p>
+        <p class="help" id="meterNaming">The month (<code>YYYYMM</code>), the meter's name, <code>#1</code> for the first top-up that month (<code>#2</code> for a second one), then <code>Before</code>, <code>Input</code> or <code>After</code>. Use the original photos, not screenshots of them: the time each photo was taken is read from the file.</p>
         <div class="field">
           <label for="reader">AI reader</label>
           <select id="reader"></select>
@@ -892,9 +892,9 @@ function renderMeterExamples() {
   const prefix = `${year}${String(month).padStart(2, "0")}`;
   const meter = meterSettings().bills[0] || "Klaska PLN";
   const items = [
-    ["01 Photo 1 Before", "the credit left, just before topping up"],
-    ["01 Photo 2 Topup", "the kWh just added: the meter's screen after the token, or the receipt"],
-    ["01 Photo 3 After", "the credit right after topping up"],
+    ["#1 Before", "the credit left, just before topping up"],
+    ["#1 Input", "the kWh just added: the meter's screen after entering the token, or the receipt"],
+    ["#1 After", "the credit right after topping up"],
   ];
   $("meterExamples").replaceChildren(...items.map(([part, what]) => el("li", {}, el("code", {}, `${prefix} ${meter} ${part}.jpg`), what)));
 }
@@ -1060,7 +1060,7 @@ function renderMeters() {
   }
   if (meterData.meters.length === 0) {
     const ex = $("meterExamples").querySelector("code");
-    box.replaceChildren(el("div", { class: "empty" }, `No photos (JPG, PNG or HEIC) of ${bills.join(", ")} in the bills folder yet. Name them like `, el("code", {}, ex ? ex.textContent : "202611 Klaska PLN 01 Photo 1 Before.jpg"), " (see Electricity meters)."));
+    box.replaceChildren(el("div", { class: "empty" }, `No photos (JPG, PNG or HEIC) of ${bills.join(", ")} in the bills folder yet. Name them like `, el("code", {}, ex ? ex.textContent : "202611 Klaska PLN #1 Before.jpg"), " (see Electricity meters)."));
     return;
   }
   box.replaceChildren(...meterData.meters.map((m) => {

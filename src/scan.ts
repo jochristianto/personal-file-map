@@ -121,17 +121,19 @@ export async function scanDirectory(dir: string, year: number, self: string | nu
 }
 
 /**
- * The bill a file belongs to, and which transaction of the month it is. A 1–2 digit number after the name
- * numbers the payments or top-ups within a month, and "Photo …" describes the picture, so these are all
- * the bill "Klaska PLN": "Klaska PLN 01 Photo 1 Before", "Klaska PLN 02 Photo 3 After", "Klaska PLN Photo 2".
+ * The bill a file belongs to, and which payment of the month it is. The bill's name ends at the first of:
+ *  - "#1", "#2": which payment or top-up of the month (counted: two of them = 2 transactions)
+ *  - "1", "2", "3": which document or step of the payment (not counted)
+ *  - "Photo …": what the picture is
+ * So "PBB Klaska 1 SPPT" and "PBB Klaska 3 Lunas" are the bill "PBB Klaska" with one payment, and
+ * "Klaska PLN #1 Before" and "Klaska PLN #2 After" are the bill "Klaska PLN" with two.
  */
 export function splitBillName(fullName: string): { bill: string; txn: number | null } {
   const words = fullName.split(" ");
-  for (let i = 1; i < words.length; i++) {
-    if (/^\d{1,2}$/.test(words[i])) return { bill: words.slice(0, i).join(" "), txn: Number(words[i]) };
-    if (/^(photo|foto)$/i.test(words[i])) return { bill: words.slice(0, i).join(" "), txn: null };
-  }
-  return { bill: fullName, txn: null };
+  const end = words.findIndex((w, i) => i > 0 && (/^#\d{1,2}$/.test(w) || /^\d{1,2}$/.test(w) || /^(photo|foto)$/i.test(w)));
+  if (end < 0) return { bill: fullName, txn: null };
+  const marker = words.slice(end).find((w) => /^#\d{1,2}$/.test(w)); // also after a step: "PBB Klaska 2 #2 Payment"
+  return { bill: words.slice(0, end).join(" "), txn: marker ? Number(marker.slice(1)) : null };
 }
 
 const sha1 = (b: Buffer) => createHash("sha1").update(b).digest("hex");
