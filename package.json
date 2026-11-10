@@ -1,6 +1,6 @@
 {
-  "name": "bills-overview",
-  "version": "1.0.0",
+  "name": "personal-file-map",
+  "version": "0.0.1",
   "private": true,
   "description": "Double-click generator for a monthly bills overview PDF (macOS + Windows)",
   "license": "PolyForm-Noncommercial-1.0.0",

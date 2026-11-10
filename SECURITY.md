@@ -1,6 +1,6 @@
 # Security policy
 
-Bills Overview reads folders full of financial documents, so we take security reports seriously.
+Personal File Map reads folders full of financial documents, so we take security reports seriously.
 
 ## Supported versions
 

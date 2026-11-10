@@ -47,9 +47,9 @@ export function openFile(file: string): void {
 
 export function configDir(): string {
   const home = os.homedir();
-  if (isMac) return path.join(home, "Library", "Application Support", "Bills Overview");
-  if (isWin) return path.join(process.env.APPDATA || path.join(home, "AppData", "Roaming"), "Bills Overview");
-  return path.join(process.env.XDG_CONFIG_HOME || path.join(home, ".config"), "bills-overview");
+  if (isMac) return path.join(home, "Library", "Application Support", "Personal File Map");
+  if (isWin) return path.join(process.env.APPDATA || path.join(home, "AppData", "Roaming"), "Personal File Map");
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(home, ".config"), "personal-file-map");
 }
 
 /**

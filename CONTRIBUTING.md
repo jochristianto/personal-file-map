@@ -1,4 +1,4 @@
-# Contributing to Bills Overview
+# Contributing to Personal File Map
 
 Thanks for helping. Bug reports, ideas, documentation fixes and code are all welcome. This page explains how to set up the project, what a good change looks like, and how it gets merged.
 
@@ -77,7 +77,7 @@ Every merge to `main` rebuilds the apps and replaces the **latest** release on t
 
 ## Contribution terms
 
-Bills Overview is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE), not under an OSI open-source license. When you submit a contribution (code, docs, images or anything else) you agree that:
+Personal File Map is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE), not under an OSI open-source license. When you submit a contribution (code, docs, images or anything else) you agree that:
 
 1. you wrote it, or otherwise have the right to submit it;
 2. it's licensed to everyone under the same terms as the project ([LICENSE](LICENSE)); and

@@ -1,6 +1,6 @@
 # Code of Conduct
 
-Bills Overview is a small project run in people's spare time. We want everyone who reports a bug, asks a question or sends a pull request to feel welcome, whatever their experience, background or identity.
+Personal File Map is a small project run in people's spare time. We want everyone who reports a bug, asks a question or sends a pull request to feel welcome, whatever their experience, background or identity.
 
 ## Expected
 

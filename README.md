@@ -1,8 +1,8 @@
-# Bills Overview
+# Personal File Map
 
 A double-click app for macOS and Windows that turns a folder of monthly bill files into a one-glance PDF report: **what's been paid, what's still due this month, and what's missing**.
 
-You keep doing what you already do: save each bill, receipt or payment screenshot as `YYYYMM Name.ext` in a folder. Double-click the app in that folder: a settings window opens where you pick the bills folder and say when each bill is due. Click **Generate report**, and `bills-overview.output.pdf` opens with:
+You keep doing what you already do: save each bill, receipt or payment screenshot as `YYYYMM Name.ext` in a folder. Double-click the app in that folder: a settings window opens where you pick the bills folder and say when each bill is due. Click **Generate report**, and `personal-file-map.output.pdf` opens with:
 
 - **Overview page:** paid vs. still due this month, missing files, year-to-date coverage, latest upload, a files-per-month chart, highlights, and a *Housekeeping* list of files that couldn't be read.
 - **Matrix pages:** every bill (grouped by first word) × every month, marked *file found* / *due this month* / *missing*, with a status per bill.
@@ -17,33 +17,35 @@ Get the latest build from the [**Releases page**](../../releases/latest). It's r
 
 | Download | For |
 |---|---|
-| `bills-overview-macos-apple-silicon.zip` | macOS 11 or later on Apple Silicon (M1 and later) |
-| `bills-overview-macos-intel.zip` | macOS 11 or later on Intel |
-| `bills-overview-windows-x64.exe` | Windows 10 / 11, x64 |
+| `personal-file-map-macos-apple-silicon.zip` | macOS 11 or later on Apple Silicon (M1 and later) |
+| `personal-file-map-macos-intel.zip` | macOS 11 or later on Intel |
+| `personal-file-map-windows-x64.exe` | Windows 10 / 11, x64 |
 
 Not sure which Mac you have? Apple menu → About This Mac: *Chip: Apple M…* means Apple Silicon, *Processor: Intel…* means Intel.
 
-On macOS, double-click the `.zip` to unpack `bills-overview.app`. Then follow [Quick start](#quick-start). You can also [build the apps yourself](#build-from-source).
+On macOS, double-click the `.zip` to unpack `personal-file-map.app`. Then follow [Quick start](#quick-start). You can also [build the apps yourself](#build-from-source).
 
 ## First launch
 
 The apps are free and not signed with a paid Apple or Microsoft certificate, so both systems warn the first time you open them.
 
-- **macOS** says the app "can't be opened" or that Apple "could not verify" it. Click **Done** (not *Move to Trash*), open **System Settings → Privacy & Security**, scroll down to *"Bills Overview" was blocked…* and click **Open Anyway**, then confirm. You only need to do this once per copy of the app.
-  If you're comfortable with Terminal, `xattr -dr com.apple.quarantine /path/to/bills-overview.app` does the same.
-- **macOS** may ask to let *Bills Overview* access files (for example on Google Drive). Click **Allow**. If you said no, re-enable it under System Settings → Privacy & Security → Files & Folders.
+- **macOS** says the app "can't be opened" or that Apple "could not verify" it. Click **Done** (not *Move to Trash*), open **System Settings → Privacy & Security**, scroll down to *"Personal File Map" was blocked…* and click **Open Anyway**, then confirm. You only need to do this once per copy of the app.
+  If you're comfortable with Terminal, `xattr -dr com.apple.quarantine /path/to/personal-file-map.app` does the same.
+- **macOS** may ask to let *Personal File Map* access files (for example on Google Drive). Click **Allow**. If you said no, re-enable it under System Settings → Privacy & Security → Files & Folders.
 - **macOS**: if the app says it's "running from a temporary location", drag it to another folder and back in Finder, then open it again.
 - **Windows** may show a SmartScreen warning: *More info → Run anyway*. A console window flashes as it starts.
 - **The settings window** is a page the app serves on your own computer (nothing goes online), shown as a standalone app window by Microsoft Edge (Windows) or Google Chrome / Edge / Brave (macOS) with a profile of its own, so your normal browser is untouched. Without one of those, it opens in your default browser instead.
 
 Each release lists SHA-256 checksums in `SHA256SUMS.txt` if you want to check your download.
 
+**Upgrading from Bills Overview?** That was this app's earlier name. Replace the old app with the new one in your bills folder; your `config.local.json` keeps working as it is. macOS asks for file access again, because it sees a new app. The report is now called `personal-file-map.output.pdf`; you can delete the old `bills-overview.output.pdf` (the app ignores it).
+
 ## Quick start
 
-1. Get the app: **`bills-overview.app`** (macOS) or **`bills-overview.exe`** (Windows) from the [Releases page](../../releases/latest), see [Download](#download).
+1. Get the app: **`personal-file-map.app`** (macOS) or **`personal-file-map.exe`** (Windows) from the [Releases page](../../releases/latest), see [Download](#download).
 2. Copy it **into the folder with your bills**, e.g. `My Drive/Bills/Monthly Bills/2026`.
 3. **Double-click it.** The settings window opens (see [Settings window](#settings-window)) with every bill it found set to *monthly*. Change the bills that aren't monthly.
-4. Click **Generate report**. Only now is anything written: your settings are saved to `config.local.json` next to the app, and `bills-overview.output.pdf` is written and opened. Run it whenever you add files; the window opens with your saved settings, and the PDF is overwritten each time. Closing the window quits the app.
+4. Click **Generate report**. Only now is anything written: your settings are saved to `config.local.json` next to the app, and `personal-file-map.output.pdf` is written and opened. Run it whenever you add files; the window opens with your saved settings, and the PDF is overwritten each time. Closing the window quits the app.
 
 For a new year, copy the app and your `config.local.json` into the new year's folder.
 
@@ -169,23 +171,23 @@ This creates:
 
 | File | For |
 |---|---|
-| `out/bills-overview.app` | macOS on Apple Silicon |
-| `out/bills-overview-intel.app` | macOS on Intel |
-| `out/bills-overview.exe` | Windows x64 |
+| `out/personal-file-map.app` | macOS on Apple Silicon |
+| `out/personal-file-map-intel.app` | macOS on Intel |
+| `out/personal-file-map.exe` | Windows x64 |
 
 Nothing else is left behind: intermediate files are made in a temporary folder that's deleted after every build, even a failed one. The first build downloads the Node runtimes that get packed into the apps (about 60 MB each, cached afterwards), so it takes a minute; later builds are faster. [`config.default.json`](config.default.json) is compiled in: change it and rebuild to change the defaults new `config.local.json` files start from.
 
 **4. Try it on the samples**
 
-The app and the sample bills are now side by side in `out/`, so just double-click `out/bills-overview.app` in Finder (or `out\bills-overview.exe` on Windows), or:
+The app and the sample bills are now side by side in `out/`, so just double-click `out/personal-file-map.app` in Finder (or `out\personal-file-map.exe` on Windows), or:
 
 ```bash
-open out/bills-overview.app
+open out/personal-file-map.app
 ```
 
-The settings window opens with every sample bill listed as *monthly*. Click **Generate report**: the report opens and is saved as `out/bills-overview.output.pdf`, next to a new `out/config.local.json`.
+The settings window opens with every sample bill listed as *monthly*. Click **Generate report**: the report opens and is saved as `out/personal-file-map.output.pdf`, next to a new `out/config.local.json`.
 
-Everything generated (`out/`, `node_modules/`, plus any `config.local.json` or `bills-overview.output.pdf` the app writes) is git-ignored. Delete it any time and generate it again.
+Everything generated (`out/`, `node_modules/`, plus any `config.local.json` or `personal-file-map.output.pdf` the app writes) is git-ignored. Delete it any time and generate it again.
 
 ### Automatic builds
 
@@ -201,7 +203,7 @@ All commands run in the repo root (after `pnpm install`):
 
 | Command | What |
 |---|---|
-| `pnpm build` | Generate `out/bills-overview.app` and `out/bills-overview.exe` (see [Build from source](#build-from-source)) |
+| `pnpm build` | Generate `out/personal-file-map.app` and `out/personal-file-map.exe` (see [Build from source](#build-from-source)) |
 | `pnpm samples [year] [month]` | Generate sample bills in `out/` |
 | `pnpm typecheck` | TypeScript check |
 | `pnpm dev` | Bundle and run once with Node, without packaging (nothing is left behind) |
@@ -219,7 +221,7 @@ To run without double-clicking, e.g. on the samples: `BILLS_DIR=out pnpm dev`. T
    2. **Update config**: bills no key covers yet are appended to `config.local.json` as `"monthly"`.
    3. **Analyze** (`analyze.ts`): per bill and month, *paid* / *missing* / *due* / *none* / *future* from the schedules; groups by first word; stats for the overview page.
    4. **Render** (`pdf.ts`): A4 landscape PDF with pdfkit and embedded Inter fonts; overview page plus a paginated matrix.
-   5. **Write and open** `bills-overview.output.pdf`.
+   5. **Write and open** `personal-file-map.output.pdf`.
 
 `build.mjs` bundles everything into one JS file with esbuild (fonts, the settings page and `config.default.json` inlined; pdfkit's `import.meta.url` is shimmed for CJS), packages it with `@yao-pkg/pkg` for macOS arm64/x64 and Windows x64, wraps the macOS binaries in `.app` bundles (icon from `scripts/icon.mjs`, ad-hoc signed), and puts both `.app` bundles and the `.exe` in `out/`. All intermediates live in a temporary folder that's removed when the build ends. Anything read at runtime must be inside the bundle: the packaged app can't read files from `node_modules`.
 
@@ -258,12 +260,12 @@ To run without double-clicking, e.g. on the samples: `BILLS_DIR=out pnpm dev`. T
 │   ├── pdf.ts              the report (pdfkit, Inter font)
 │   └── platform.ts         app window, dialogs, folder picker, opening files on macOS / Windows
 └── out/                    generated, git-ignored
-    ├── bills-overview.app  pnpm build (Apple Silicon)
-    ├── bills-overview-intel.app   pnpm build (Intel Mac)
-    ├── bills-overview.exe  pnpm build
+    ├── personal-file-map.app  pnpm build (Apple Silicon)
+    ├── personal-file-map-intel.app   pnpm build (Intel Mac)
+    ├── personal-file-map.exe  pnpm build
     ├── YYYYMM Name.*       sample bills (pnpm samples)
     ├── config.local.json   written by the app when you first generate
-    └── bills-overview.output.pdf   the report, written by the app
+    └── personal-file-map.output.pdf   the report, written by the app
 ```
 
 ## Troubleshooting
@@ -273,11 +275,11 @@ To run without double-clicking, e.g. on the samples: `BILLS_DIR=out pnpm dev`. T
 | Report is empty or everything says *Not scheduled* | In the settings window, check the bills folder shows files, and that the bills have a schedule other than *Not scheduled*. |
 | "The bills folder doesn't exist" | Fix the bills folder in the settings window (or **Browse…**); the message shows the resolved path. |
 | The settings window doesn't appear | After a minute the app shows its address; open that in any browser. |
-| "macOS blocked access" | Click **Open Privacy & Security settings** under the message (or go to System Settings → Privacy & Security → Files & Folders) and allow *Bills Overview*. Back in the window, the folder is checked again by itself, or click **Try again**. |
-| "… is open in another app" (Windows) | Close `bills-overview.output.pdf` and run again. |
+| "macOS blocked access" | Click **Open Privacy & Security settings** under the message (or go to System Settings → Privacy & Security → Files & Folders) and allow *Personal File Map*. Back in the window, the folder is checked again by itself, or click **Try again**. |
+| "… is open in another app" (Windows) | Close `personal-file-map.output.pdf` and run again. |
 | A file is missing from the report | Look under *Housekeeping* on page 1; it says why each skipped file was skipped. |
 
-The result of the last run (or the error) is logged to `last-run.log` in `~/Library/Application Support/Bills Overview/` (macOS) or `%APPDATA%\Bills Overview\` (Windows).
+The result of the last run (or the error) is logged to `last-run.log` in `~/Library/Application Support/Personal File Map/` (macOS) or `%APPDATA%\Personal File Map\` (Windows).
 
 ## Contributing
 
@@ -285,11 +287,11 @@ Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIB
 
 ## License
 
-Bills Overview is **source-available** under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+Personal File Map is **source-available** under the [PolyForm Noncommercial License 1.0.0](LICENSE).
 
 - ✅ **You may** use it for free for personal and other noncommercial purposes (charities, schools, public institutions included), read and change the code, and share it, changed or not, for free, with the license included.
-- ❌ **You may not** sell it, charge for it, include it in a paid product or service, or use it commercially in any other way, **whether it's called "Bills Overview" or anything else**. Renaming a copy doesn't change what it is.
-- The **name "Bills Overview" and the app icon** aren't covered by the license: modified copies you share must use a different name and icon. See [TRADEMARKS.md](TRADEMARKS.md).
+- ❌ **You may not** sell it, charge for it, include it in a paid product or service, or use it commercially in any other way, **whether it's called "Personal File Map" or anything else**. Renaming a copy doesn't change what it is.
+- The **name "Personal File Map" and the app icon** aren't covered by the license: modified copies you share must use a different name and icon. See [TRADEMARKS.md](TRADEMARKS.md).
 
 Because it limits commercial use, this isn't an "open source" license in the [OSI](https://opensource.org/osd) sense. For commercial use, open an issue to ask about a separate license.
 

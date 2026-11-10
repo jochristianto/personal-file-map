@@ -52,15 +52,15 @@ jobs:
           set -euo pipefail
           mkdir dist
           # ditto keeps the bundle's permissions and code signature intact, unlike zip
-          ditto -c -k --keepParent out/bills-overview.app dist/bills-overview-macos-apple-silicon.zip
-          ditto -c -k --keepParent out/bills-overview-intel.app dist/bills-overview-macos-intel.zip
-          cp out/bills-overview.exe dist/bills-overview-windows-x64.exe
+          ditto -c -k --keepParent out/personal-file-map.app dist/personal-file-map-macos-apple-silicon.zip
+          ditto -c -k --keepParent out/personal-file-map-intel.app dist/personal-file-map-macos-intel.zip
+          cp out/personal-file-map.exe dist/personal-file-map-windows-x64.exe
           (cd dist && shasum -a 256 * > SHA256SUMS.txt)
           ls -lh dist
 
       - uses: actions/upload-artifact@v4
         with:
-          name: bills-overview-${{ github.sha }}
+          name: personal-file-map-${{ github.sha }}
           path: dist/
           retention-days: 14
           if-no-files-found: error
@@ -77,7 +77,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: bills-overview-${{ github.sha }}
+          name: personal-file-map-${{ github.sha }}
           path: dist
 
       - name: Replace the "latest" release
@@ -92,9 +92,9 @@ jobs:
 
           | Download | For |
           |---|---|
-          | \`bills-overview-macos-apple-silicon.zip\` | macOS on Apple Silicon (M1 and later) |
-          | \`bills-overview-macos-intel.zip\` | macOS on Intel |
-          | \`bills-overview-windows-x64.exe\` | Windows 10/11, x64 |
+          | \`personal-file-map-macos-apple-silicon.zip\` | macOS on Apple Silicon (M1 and later) |
+          | \`personal-file-map-macos-intel.zip\` | macOS on Intel |
+          | \`personal-file-map-windows-x64.exe\` | Windows 10/11, x64 |
 
           The apps aren't notarized or signed with a paid certificate, so macOS and Windows warn on first launch.
           See [First launch](https://github.com/${GITHUB_REPOSITORY}#first-launch) in the README.
@@ -104,7 +104,7 @@ jobs:
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
           git push --delete origin latest 2>/dev/null || true # a tag left without its release
           gh release create latest dist/* \
-            --title "Bills Overview ${version} (latest build, ${short})" \
+            --title "Personal File Map ${version} (latest build, ${short})" \
             --notes-file notes.md \
             --target "$GITHUB_SHA" \
             --latest

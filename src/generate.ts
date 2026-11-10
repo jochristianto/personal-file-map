@@ -29,7 +29,7 @@ export interface GenerateResult {
 
 /**
  * One report from the saved config.local.json in `appDir`: tidy the bills folder, scan it, add bills no
- * key covers yet as "monthly", analyze, render, write bills-overview.output.pdf into the bills folder.
+ * key covers yet as "monthly", analyze, render, write personal-file-map.output.pdf into the bills folder.
  * `created`: config.local.json was created by this run (the report mentions it).
  */
 export async function generate(appDir: string, today: Date, created: boolean): Promise<GenerateResult> {
@@ -110,7 +110,7 @@ export async function checkFolder(dir: string, setting: string | undefined) {
     if (code === "ENOENT" || code === "ENOTDIR") throw new FolderError(`The bills folder doesn't exist:\n${dir}${where}`);
     const blocked = isMac && (code === "EPERM" || code === "EACCES");
     const hint = blocked
-      ? "\n\nmacOS blocked access. Open System Settings → Privacy & Security → Files & Folders and allow “Bills Overview”, then try again."
+      ? "\n\nmacOS blocked access. Open System Settings → Privacy & Security → Files & Folders and allow “Personal File Map”, then try again."
       : "";
     throw new FolderError(`Can't open the bills folder:\n${dir}${where}${hint}`, blocked);
   }

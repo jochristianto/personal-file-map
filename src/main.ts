@@ -2,7 +2,7 @@ import { appFolder, isTranslocated, TRANSLOCATED_MESSAGE } from "./locate";
 import { hideOwnConsoleWindow, showAlert, writeLog } from "./platform";
 import { runSettingsWindow } from "./window";
 
-const TITLE = "Bills Overview";
+const TITLE = "Personal File Map";
 
 /**
  * Double-click → the settings window opens with config.local.json's settings (or the defaults, plus every

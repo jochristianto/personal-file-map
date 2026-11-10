@@ -6,16 +6,19 @@ import type { BillFile, IgnoredFile, ScanResult } from "./types";
 export const ALLOWED_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg", "heic"]);
 
 /** The report, written into the bills folder and overwritten on every run. */
-export const OUTPUT_NAME = "bills-overview.output.pdf";
+export const OUTPUT_NAME = "personal-file-map.output.pdf";
+const LEGACY_OUTPUT_NAME = "bills-overview.output.pdf";
 
-/** Files we never list or warn about: the app itself, configs, our own output, the old PNG output, OS clutter. */
+/** Files we never list or warn about: the app itself, configs, our own output, outputs of older versions, OS clutter. */
 function isSilentlyIgnored(file: string, _year: number, self: string | null): boolean {
   if (file.startsWith(".") || file.startsWith("~$")) return true;
   const lower = file.toLowerCase();
   if (self && lower === self.toLowerCase()) return true;
-  if (/^bills-overview.*\.exe$/.test(lower)) return true; // the Windows build sitting next to the Mac app
+  if (/^personal-file-map.*\.exe$/.test(lower)) return true; // the Windows build sitting next to the Mac app
   if (CONFIG_FILES.includes(lower)) return true;
   if (lower === OUTPUT_NAME) return true;
+  // Left behind by the app's earlier name, Bills Overview
+  if (lower === LEGACY_OUTPUT_NAME || /^bills-overview.*\.exe$/.test(lower)) return true;
   if (/^presence-map-\d{4}\.png$/.test(lower)) return true; // output of the old file-mapper script
   return ["desktop.ini", "thumbs.db", "icon\r"].includes(lower);
 }
