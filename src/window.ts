@@ -26,6 +26,7 @@ import { chooseFolder, isWin, openAppWindow, openFile, openPrivacySettings, reve
 import { isProvider, keyStatus, mergeKeys, PROVIDERS, type PendingKeys } from "./reader";
 import { scanDirectory } from "./scan";
 import page from "./window.html";
+import { version as APP_VERSION } from "../package.json";
 
 /**
  * The settings window: a small page served on 127.0.0.1 and opened as an app window. It edits the same
@@ -51,6 +52,14 @@ export interface WindowOptions {
 const FONTS: Record<string, Uint8Array> = { "400": interRegular, "500": interMedium, "600": interSemibold };
 const GRACE_MS = 4000; // a reload reconnects within this; otherwise the window was closed
 const FIRST_CONNECT_MS = 60_000;
+
+/** The footer's links, opened in the default browser. The page only names one; it can't open any other URL. */
+const REPO_URL = "https://github.com/jochristianto/personal-file-map";
+const LINKS: Record<string, string> = {
+  repo: REPO_URL,
+  issues: `${REPO_URL}/issues/new/choose`,
+  faq: `${REPO_URL}/blob/main/FAQ.md`,
+};
 
 export async function runSettingsWindow(opts: WindowOptions): Promise<void> {
   opts = { ...opts, pendingKeys: {} };
@@ -106,6 +115,8 @@ export async function runSettingsWindow(opts: WindowOptions): Promise<void> {
           const { apiKeys: _keys, ...meters } = settings.meters; // the keys stay here; the page only learns whether one is set
           return json(res, {
             title: opts.title,
+            version: APP_VERSION,
+            links: LINKS,
             platform: process.platform,
             appDir: opts.appDir,
             configFile: path.join(opts.appDir, LOCAL_CONFIG_NAME),
@@ -197,6 +208,10 @@ export async function runSettingsWindow(opts: WindowOptions): Promise<void> {
         case "POST /api/open": {
           const { target } = (await readJson(req)) as { target?: string };
           if (target === "privacy") return json(res, { ok: openPrivacySettings() });
+          if (target && Object.hasOwn(LINKS, target)) {
+            openFile(LINKS[target]); // in the default browser, not the app window's own profile
+            return json(res, { ok: true });
+          }
           const keyPage = PROVIDERS.find((p) => target === `keys:${p.id}`);
           if (keyPage) {
             openFile(keyPage.keyUrl); // in the default browser, where the user is signed in

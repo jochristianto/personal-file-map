@@ -22,7 +22,7 @@ body:
     id: version
     attributes:
       label: Build
-      description: The release title (e.g. "Personal File Map 0.0.1 (latest build, abc1234)"), or the commit if you built it yourself.
+      description: The version at the bottom of the settings window (e.g. "v0.0.2"), the release title (e.g. "Personal File Map 0.0.2 (latest build, abc1234)"), or the commit if you built it yourself.
     validations:
       required: true
   - type: input

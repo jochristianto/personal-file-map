@@ -85,6 +85,8 @@ Examples: `202601 Rent.pdf`, `202603 Internet Payment.jpg`, `202601 PBB Klaska 1
   The settings window shows the number of payments on the month, and the report's matrix shows a small *2* next to the checkmark. `Photo …` also ends the name (`Klaska PLN Photo 4` is *Klaska PLN*). To keep two similar bills apart, name them without a number there (`Phone Home`, `Phone Work`).
 - Files that don't fit (wrong month like `202600`, a different year, unsupported type, no `YYYYMM` prefix) are skipped and listed under *Housekeeping*.
 
+More examples, and what to do when two bills end up as one, are in the [FAQ](FAQ.md#naming-your-files).
+
 **The app tidies the folder** the same way the old script did: uppercase extensions are lowercased (`IMG.JPG` → `IMG.jpg`), and `.heic` photos are converted to `.jpg` (the `.heic` is removed afterwards; an existing `.jpg` is never overwritten). Nothing else is modified.
 
 ## Settings window
@@ -322,6 +324,7 @@ To run without double-clicking, e.g. on the samples: `BILLS_DIR=out pnpm dev`. T
 ```
 .
 ├── README.md               ← you are here
+├── FAQ.md                  frequently asked questions, with how to name your files
 ├── CONTRIBUTING.md         how to set up, develop and send a pull request
 ├── CODE_OF_CONDUCT.md
 ├── SECURITY.md             how to report a vulnerability privately
@@ -380,6 +383,8 @@ To run without double-clicking, e.g. on the samples: `BILLS_DIR=out pnpm dev`. T
 | "The Claude/OpenAI API key was refused" | Paste the key again under *Electricity meters* and click **Save**. It must be an API key from the provider's developer console with credit on the account. |
 | Meter usage says the readings don't add up | A photo was misread or classified wrong (balance vs. top-up): check that stretch's photos in the *Meter readings* table. |
 | A file is missing from the report | Look under *Housekeeping* on page 1; it says why each skipped file was skipped. |
+
+More answers are in the [FAQ](FAQ.md). Still stuck? [Report an issue](../../issues/new/choose); the settings window's footer links there too, next to the app's version.
 
 The result of the last run (or the error) is logged to `last-run.log` in `~/Library/Application Support/Personal File Map/` (macOS) or `%APPDATA%\Personal File Map\` (Windows).
 

@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Read the FAQ
+    url: https://github.com/jochristianto/personal-file-map/blob/main/FAQ.md
+    about: Answers to common questions, including how to name your files (# for separate payments, plain numbers for documents of one payment).
   - name: Report a security problem
     url: https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability
     about: Please report security problems privately through the repository's Security tab, not as an issue.

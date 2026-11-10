@@ -38,11 +38,11 @@
   body {
     font: 14px/1.45 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased;
-    padding-bottom: 88px;
+    padding-bottom: 104px;
   }
   main { padding: 24px 28px 0; } /* full window width */
   .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
-  .sidebar { position: sticky; top: 16px; max-height: calc(100vh - 104px); overflow-y: auto; border-radius: 12px; }
+  .sidebar { position: sticky; top: 16px; max-height: calc(100vh - 120px); overflow-y: auto; border-radius: 12px; }
   .sidebar .card:last-child { margin-bottom: 0; }
   .main-col { min-width: 0; }
   .bills { container-type: inline-size; } /* bill rows adapt to the column, not the window */
@@ -163,7 +163,13 @@
     backdrop-filter: blur(8px); border-top: 1px solid var(--border);
   }
   .footer-in { padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .footer-left { min-width: 0; display: grid; gap: 3px; }
   .status { font-size: 13px; color: var(--muted); min-width: 0; }
+  .footer-links { font-size: 12px; color: var(--faint); display: flex; flex-wrap: wrap; align-items: baseline; }
+  .footer-links > * + *::before { content: "·"; margin: 0 7px; color: var(--faint); }
+  .footer-links a { color: var(--muted); text-decoration: none; }
+  .footer-links a:hover { color: var(--fg); text-decoration: underline; }
+  #appVersion { font-variant-numeric: tabular-nums; }
   .status strong { color: var(--fg); font-weight: 600; }
   .status.ok strong { color: var(--green); }
   .status.err { color: var(--rose); white-space: pre-wrap; }
@@ -371,7 +377,15 @@
 
 <footer>
   <div class="footer-in">
-    <div class="status" id="status">Loading…</div>
+    <div class="footer-left">
+      <div class="status" id="status">Loading…</div>
+      <nav class="footer-links" aria-label="About this app">
+        <span id="appVersion" class="hidden"></span>
+        <a href="#" data-link="repo" title="The source code on GitHub">GitHub</a>
+        <a href="#" data-link="issues" title="Report a bug or suggest an idea on GitHub">Report an issue</a>
+        <a href="#" data-link="faq" title="Frequently asked questions and how to name your files">FAQ</a>
+      </nav>
+    </div>
     <div class="actions">
       <button type="button" class="hidden" id="openPdf">Open PDF</button>
       <button type="button" class="hidden" id="reveal">Show in Finder</button>
@@ -1106,6 +1120,20 @@ function renderMeters() {
   }));
 }
 
+// ── Footer links ───────────────────────────────────────────────────────────
+// Opened by the app in the default browser (this window has a profile of its own, without your sign-ins)
+function renderFooterLinks() {
+  if (state.version) {
+    $("appVersion").textContent = "v" + state.version;
+    $("appVersion").classList.remove("hidden");
+  }
+  for (const a of document.querySelectorAll(".footer-links a[data-link]")) {
+    const url = state.links && state.links[a.dataset.link];
+    if (url) a.href = url;
+    a.addEventListener("click", (e) => { e.preventDefault(); api("open", { target: a.dataset.link }).catch(() => {}); });
+  }
+}
+
 // ── Start ──────────────────────────────────────────────────────────────────
 async function start() {
   try {
@@ -1119,6 +1147,7 @@ async function start() {
   }
   document.title = state.title;
   renderHeader();
+  renderFooterLinks();
   if (state.configError) {
     $("configError").textContent = state.configError.replace(/\n\nFix it and run again\.$/, "") +
       "\n\nThe settings below start from the defaults. Generating the report replaces config.local.json with them.";
