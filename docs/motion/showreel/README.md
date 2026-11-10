@@ -1,6 +1,6 @@
 # The motion reel
 
-A 15-second piece for Personal File Map, cut like a motion designer's showreel: one page ([`index.html`](index.html)) seeked frame by frame, with synthesized sound design over the README demo's song. Nothing here is part of the app or its build; generated files go to `out/showreel/` (git-ignored).
+A 15-second piece for Personal File Map, cut like a motion designer's showreel: one page ([`index.html`](index.html)) seeked frame by frame, with synthesized sound design over the README demo's song. The README shows a silent GIF of it, [`docs/reel.gif`](../../reel.gif). Nothing here is part of the app or its build; generated files go to `out/showreel/` (git-ignored).
 
 ## Make it
 
@@ -9,13 +9,13 @@ From this folder, after the steps in [`../README.md`](../README.md) up to `node 
 ```bash
 node render.mjs --sheet       # one frame per beat → out/showreel/sheet.png: check before the full render
 node render.mjs --at 7.74     # single frames, any number of times in seconds
-node render.mjs               # 900 frames × 4 subframes, blended for motion blur → out/showreel/reel.mkv (~5 min)
+node render.mjs               # 900 frames × 4 subframes, blended for motion blur → out/showreel/reel.mkv (~15 min)
 python3 sound.py ../../../out/motion/deep-urban.mp3 ../../../out/showreel/reel.wav
-./finish.sh                   # reel.mp4 (1920×1080, 60 fps, with sound), poster.png, and the README's copy, docs/reel.mp4
-node poster.mjs               # the README's poster with a play pill → docs/reel-poster.jpg
+node render.mjs --gif         # the GIF's cut: 15 fps, a 180° shutter, no grain or vignette → out/showreel/reel-gif.mkv (~4 min)
+./finish.sh                   # out/showreel/reel.mp4 (1920×1080, 60 fps, with sound) and the README's docs/reel.gif
 ```
 
-The README shows `docs/reel-poster.jpg` linked to `docs/reel.mp4`: GitHub plays an MP4 on its file page, but doesn't play a video from the repo inside a README (only one uploaded through GitHub's own editor).
+**The GIF** is 960 wide at 15 fps with one 128-colour palette and ordered (Bayer) dithering, about 8 MB. It's rendered without the film grain and vignette: GIF can only band or dither those, and dithered grain changes on every frame, which GIF compresses badly. The dithering keeps the dark background gradients from banding into rings.
 
 Open `index.html?t=12.3` in Chrome (with `--allow-file-access-from-files`) to hold a frame, or without `?t` to play it live. `sound.py` needs numpy.
 

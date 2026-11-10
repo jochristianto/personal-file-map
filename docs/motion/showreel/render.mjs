@@ -3,6 +3,7 @@
 //   node render.mjs --sheet         one frame per beat (mid-beat) + a contact sheet, to check before the full render
 //   node render.mjs --at 12.5       one frame at t = 12.5 s
 //   node render.mjs                 the reel: out/showreel/reel.mkv (lossless; finish.sh adds the sound)
+//   node render.mjs --gif           the README's cut: 15 fps, a 180° shutter, no grain or vignette → out/showreel/reel-gif.mkv
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -13,8 +14,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const out = path.resolve(here, "../../../out/showreel");
 fs.mkdirSync(out, { recursive: true });
-const url = pathToFileURL(path.join(here, "index.html")).href + "?render";
-const W = 1920, H = 1080, FPS = 60, SUB = Number(process.env.SUB || 4);
+const GIF = process.argv.includes("--gif");
+const url = pathToFileURL(path.join(here, "index.html")).href + "?render" + (GIF ? "&gif" : "");
+const W = 1920, H = 1080, FPS = GIF ? 15 : 60, SUB = Number(process.env.SUB || 4), SHUTTER = GIF ? 0.5 : 1;
 
 const shell = path.join(os.homedir(), "Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell");
 // file:// fonts (SF Mono) and the report pages under out/ need file access across folders
@@ -75,7 +77,7 @@ try {
       const exited = new Promise((resolve, reject) => ff.on("exit", (c) => (c ? reject(new Error("ffmpeg " + c)) : resolve())));
       for (let k = from; k < to; k++) {
         for (let j = 0; j < SUB; j++) {
-          const t = Math.max(0, Math.min(T - 1e-4, k / FPS + (j - (SUB - 1) / 2) / (SUB * FPS)));
+          const t = Math.max(0, Math.min(T - 1e-4, k / FPS + ((j - (SUB - 1) / 2) / (SUB * FPS)) * SHUTTER));
           const buf = await shot(p, t);
           if (!ff.stdin.write(buf)) await new Promise((r) => ff.stdin.once("drain", r));
         }
@@ -85,9 +87,9 @@ try {
       await exited;
     }));
     fs.writeFileSync(path.join(out, "parts.txt"), parts.filter(Boolean).map((p) => `file '${p}'`).join("\n"));
-    await run(["-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", path.join(out, "parts.txt"), "-c", "copy", path.join(out, "reel.mkv")]);
+    await run(["-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", path.join(out, "parts.txt"), "-c", "copy", path.join(out, GIF ? "reel-gif.mkv" : "reel.mkv")]);
     for (const p of parts.filter(Boolean)) fs.rmSync(p);
-    console.log(`out/showreel/reel.mkv (${N} frames, lossless) in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    console.log(`out/showreel/${GIF ? "reel-gif" : "reel"}.mkv (${N} frames, lossless) in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   }
 } finally {
   await browser.close();
