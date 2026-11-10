@@ -68,7 +68,7 @@ export async function renderPdf(report: Report): Promise<Buffer> {
     autoFirstPage: false,
     bufferPages: true,
     font: regular as unknown as string, // avoids loading the built-in Helvetica files
-    info: { Title: `Bills Overview ${report.year}`, Creator: "Bills Overview" },
+    info: { Title: `Personal File Map ${report.year}`, Creator: "Personal File Map" },
   });
   doc.registerFont("regular", regular);
   doc.registerFont("medium", Buffer.from(interMedium));
@@ -198,7 +198,7 @@ function drawOverview(r: Painter, rep: Report) {
   const monthName = inYear ? MONTHS[rep.currentMonth - 1] : "";
 
   // Header
-  r.text("BILLS OVERVIEW", M, M + 4, { size: 7.5, weight: "semibold", color: C.muted, spacing: 1.2 });
+  r.text("PERSONAL FILE MAP", M, M + 4, { size: 7.5, weight: "semibold", color: C.muted, spacing: 1.2 });
   r.text(inYear ? `${monthName} ${rep.year}` : `${rep.year}`, M, M + 26, { size: 24, weight: "bold" });
   r.text(
     `${rep.rows.length} bills  ·  ${stats.scheduledCount} scheduled  ·  ${stats.irregularCount} irregular  ·  ${stats.unscheduledCount} not scheduled  ·  ${stats.totalFiles} files`,
@@ -549,7 +549,7 @@ function drawMatrixHeader(r: Painter, rep: Report) {
   const tw = r.text("Bill matrix", M, M + 8, { size: 15, weight: "bold" });
   r.text(`${rep.year}`, M + tw + 7, M + 9, { size: 11, weight: "medium", color: C.faint });
   r.text(
-    "Expected months come from config.local.json next to the app. Irregular and not-scheduled bills are shown but never flagged.",
+    "Expected months come from the app's settings (config.local.json next to the app). Irregular and not-scheduled bills are shown but never flagged.",
     M,
     M + 25,
     { size: 7.2, color: C.muted }

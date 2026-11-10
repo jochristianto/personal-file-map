@@ -7,11 +7,11 @@ node_modules/
 
 # Created when the app runs, wherever it runs (e.g. inside out/samples/)
 config.local.json
-bills-overview.output.pdf
+personal-file-map.output.pdf
 
 # The apps, if copied elsewhere in the repo
-bills-overview.app
-bills-overview.exe
+personal-file-map.app
+personal-file-map.exe
 
 # Real bill files dropped into the repo root
 /[0-9][0-9][0-9][0-9][0-9][0-9] *

@@ -119,7 +119,7 @@ function receiptPdf(file, name, month, amount) {
     doc.text(`Reference: INV-${YEAR}${String(month).padStart(2, "0")}-${Math.floor(rand() * 90000 + 10000)}`);
     doc.moveDown(1.5).fontSize(10).text("Amount");
     doc.font("Helvetica-Bold").fontSize(24).fillColor("#09090b").text(amount ? money(amount) : "-");
-    doc.moveDown(1).font("Helvetica").fontSize(8).fillColor("#a1a1aa").text("SAMPLE DATA - generated for Bills Overview");
+    doc.moveDown(1).font("Helvetica").fontSize(8).fillColor("#a1a1aa").text("SAMPLE DATA - generated for Personal File Map");
     doc.save().rotate(-12, { origin: [300, 420] });
     doc.roundedRect(220, 390, 150, 48, 8).lineWidth(3).stroke("#16a34a");
     doc.font("Helvetica-Bold").fontSize(26).fillColor("#16a34a").text("PAID", 220, 402, { width: 150, align: "center" });

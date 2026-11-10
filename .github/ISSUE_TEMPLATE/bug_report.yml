@@ -1,0 +1,55 @@
+name: Bug report
+description: Something doesn't work as described in the README
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Please don't attach real bills or anything with personal data.** If a file name matters, describe it or reproduce the problem with the sample bills (`pnpm samples`).
+        Security problems: please report them privately instead, see SECURITY.md.
+  - type: dropdown
+    id: app
+    attributes:
+      label: Which app?
+      options:
+        - macOS, Apple Silicon (personal-file-map.app)
+        - macOS, Intel (personal-file-map-intel.app)
+        - Windows x64 (personal-file-map.exe)
+        - pnpm dev (from source)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Build
+      description: The release title (e.g. "Personal File Map 0.0.1 (latest build, abc1234)"), or the commit if you built it yourself.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS version
+      placeholder: macOS 15.5 / Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Put files named "202603 Rent.pdf" and … in a folder
+        2. Set Rent to Quarterly
+        3. Click Generate report
+  - type: textarea
+    id: log
+    attributes:
+      label: last-run.log
+      description: From `~/Library/Application Support/Personal File Map/` (macOS) or `%APPDATA%\Personal File Map\` (Windows). Check it for personal details first.
+      render: text

@@ -1,0 +1,26 @@
+name: Feature request
+description: An idea to make Personal File Map more useful
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation or problem, not the solution yet. E.g. "My insurance is billed twice a year in different months."
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: How you imagine it working in the settings window or the report.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do today instead?
+  - type: checkboxes
+    id: pr
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to build this myself (see CONTRIBUTING.md)

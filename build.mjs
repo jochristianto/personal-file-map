@@ -1,5 +1,5 @@
 // Builds the double-click apps into out/:
-//   pnpm build  → out/bills-overview.app (Apple Silicon), out/bills-overview-intel.app, out/bills-overview.exe
+//   pnpm build  → out/personal-file-map.app (Apple Silicon), out/personal-file-map-intel.app, out/personal-file-map.exe
 //   pnpm dev    → bundle and run once with Node, without packaging
 // Intermediates (JS bundle, raw executables, icon) are made in a temporary folder that is always
 // deleted afterwards, even when the build fails.
@@ -12,13 +12,13 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const releaseDir = path.join(here, "out"); // generated apps (git-ignored)
-const APP_FILE = "bills-overview"; // bills-overview.app / bills-overview.exe
-const APP_TITLE = "Bills Overview"; // name shown by macOS
+const APP_FILE = "personal-file-map"; // personal-file-map.app / personal-file-map.exe
+const APP_TITLE = "Personal File Map"; // name shown by macOS
 const VERSION = JSON.parse(fs.readFileSync(path.join(here, "package.json"), "utf8")).version;
 const devMode = process.argv.includes("--dev");
 
 fs.rmSync(path.join(releaseDir, "build"), { recursive: true, force: true }); // left over by older builds
-const work = fs.mkdtempSync(path.join(os.tmpdir(), "bills-overview-build-"));
+const work = fs.mkdtempSync(path.join(os.tmpdir(), "personal-file-map-build-"));
 try {
   await run();
 } finally {
@@ -26,8 +26,8 @@ try {
 }
 
 async function run() {
-  // 1. One self-contained JS file (fonts, HEIC decoder and config.default.json inlined)
-  const bundle = path.join(work, "bills-overview.cjs");
+  // 1. One self-contained JS file (fonts, HEIC decoder, settings page and config.default.json inlined)
+  const bundle = path.join(work, "personal-file-map.cjs");
   await build({
     entryPoints: [path.join(here, "src/main.ts")],
     outfile: bundle,
@@ -35,7 +35,7 @@ async function run() {
     platform: "node",
     target: "node22",
     format: "cjs",
-    loader: { ".woff": "binary" },
+    loader: { ".woff": "binary", ".html": "text" },
     // pdfkit's ESM build reads import.meta.url at load time; give it a real URL in CJS
     define: { "import.meta.url": "__importMetaUrl" },
     banner: { js: 'const __importMetaUrl = require("url").pathToFileURL(__filename).href;' },
@@ -59,7 +59,7 @@ async function run() {
     [bundle, "--targets", targets.join(","), "--out-path", binDir, "--no-bytecode", "--public", "--public-packages", "*"],
     { stdio: "inherit" }
   );
-  const bin = (t) => path.join(binDir, `bills-overview-${t}`);
+  const bin = (t) => path.join(binDir, `personal-file-map-${t}`);
   console.log("✓ executables");
   fs.mkdirSync(releaseDir, { recursive: true });
 
@@ -76,8 +76,8 @@ async function run() {
       fs.rmSync(app, { recursive: true, force: true });
       fs.mkdirSync(path.join(app, "Contents/MacOS"), { recursive: true });
       fs.mkdirSync(path.join(app, "Contents/Resources"), { recursive: true });
-      fs.copyFileSync(bin(`macos-${arch}`), path.join(app, "Contents/MacOS/bills-overview"));
-      fs.chmodSync(path.join(app, "Contents/MacOS/bills-overview"), 0o755);
+      fs.copyFileSync(bin(`macos-${arch}`), path.join(app, "Contents/MacOS/personal-file-map"));
+      fs.chmodSync(path.join(app, "Contents/MacOS/personal-file-map"), 0o755);
       if (icns) fs.copyFileSync(icns, path.join(app, "Contents/Resources/AppIcon.icns"));
       fs.writeFileSync(path.join(app, "Contents/Info.plist"), infoPlist());
       try {
@@ -97,8 +97,8 @@ function infoPlist() {
 <dict>
   <key>CFBundleName</key><string>${APP_TITLE}</string>
   <key>CFBundleDisplayName</key><string>${APP_TITLE}</string>
-  <key>CFBundleIdentifier</key><string>id.becomeone.bills-overview</string>
-  <key>CFBundleExecutable</key><string>bills-overview</string>
+  <key>CFBundleIdentifier</key><string>id.becomeone.personal-file-map</string>
+  <key>CFBundleExecutable</key><string>personal-file-map</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
