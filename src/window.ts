@@ -21,6 +21,7 @@ import { countTransactions } from "./analyze";
 import { checkFolder, FolderError, generate } from "./generate";
 import { detectYear, selfName } from "./locate";
 import { LOGS_FOLDER } from "./ailog";
+import type { InstanceLock } from "./lock";
 import { aiTotals, editReading, electricity, meterPhotos, ReadingStore, READINGS_NAME, validateMeters, type Electricity, type MeterSettings } from "./meters";
 import { chooseFolder, isWin, openAppWindow, openFile, openPrivacySettings, revealFile, showAlert, writeLog } from "./platform";
 import { isProvider, keyStatus, mergeKeys, PROVIDERS, type PendingKeys } from "./reader";
@@ -48,6 +49,8 @@ export interface WindowOptions {
   noOpen?: boolean;
   /** API keys typed in the window: used right away, written to config.local.json on Generate. */
   pendingKeys?: PendingKeys;
+  /** This copy's single-instance lock (lock.ts): told the window's address once the server is up. */
+  lock?: InstanceLock;
 }
 
 const FONTS: Record<string, Uint8Array> = { "400": interRegular, "500": interMedium, "600": interSemibold };
@@ -109,6 +112,12 @@ export async function runSettingsWindow(opts: WindowOptions): Promise<void> {
             if (clients === 0) scheduleClose(GRACE_MS);
           });
           return;
+        }
+
+        case "GET /api/ping": {
+          // A second launch asking whether this copy is still running (lock.ts)
+          const window = clients > 0 ? "open" : everConnected ? "closing" : "starting";
+          return json(res, { ok: true, window });
         }
 
         case "GET /api/state": {
@@ -246,6 +255,7 @@ export async function runSettingsWindow(opts: WindowOptions): Promise<void> {
   port = (server.address() as AddressInfo).port;
   const address = `http://127.0.0.1:${port}${base}/`;
   console.log(`Settings window: ${address}`);
+  opts.lock?.setAddress(port, token);
 
   if (!opts.noWindow) {
     openAppWindow(address);

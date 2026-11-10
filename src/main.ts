@@ -1,3 +1,4 @@
+import { acquireLock } from "./lock";
 import { appFolder, isTranslocated, TRANSLOCATED_MESSAGE } from "./locate";
 import { hideOwnConsoleWindow, showAlert, writeLog } from "./platform";
 import { runSettingsWindow } from "./window";
@@ -7,7 +8,8 @@ const TITLE = "Personal File Map";
 /**
  * Double-click → the settings window opens with config.local.json's settings (or the defaults, plus every
  * bill found in the folder). The config and the PDF are only written when the user clicks Generate.
- * The app quits when the window is closed.
+ * The app quits when the window is closed. One copy per folder: launching it again while it's open only
+ * says so.
  */
 async function main(): Promise<void> {
   console.log(`${TITLE}\n`);
@@ -16,13 +18,20 @@ async function main(): Promise<void> {
   if (isTranslocated(appDir)) throw new Error(TRANSLOCATED_MESSAGE);
   if ((process as { pkg?: unknown }).pkg) hideOwnConsoleWindow(); // Windows only; the window is the UI now
 
-  await runSettingsWindow({
-    appDir,
-    title: TITLE,
-    today: () => (process.env.BILLS_TODAY ? new Date(`${process.env.BILLS_TODAY}T12:00:00`) : new Date()),
-    noWindow: Boolean(process.env.BILLS_NO_WINDOW),
-    noOpen: Boolean(process.env.BILLS_NO_OPEN),
-  });
+  const lock = await acquireLock(appDir);
+  if (!lock) return showAlert(TITLE, `${TITLE} is already open. Switch to its window to carry on.`);
+  try {
+    await runSettingsWindow({
+      appDir,
+      title: TITLE,
+      today: () => (process.env.BILLS_TODAY ? new Date(`${process.env.BILLS_TODAY}T12:00:00`) : new Date()),
+      noWindow: Boolean(process.env.BILLS_NO_WINDOW),
+      noOpen: Boolean(process.env.BILLS_NO_OPEN),
+      lock,
+    });
+  } finally {
+    lock.release();
+  }
 }
 
 main().catch(async (err: unknown) => {
