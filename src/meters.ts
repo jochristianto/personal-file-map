@@ -9,25 +9,32 @@ import {
   effectiveKey,
   isProvider,
   PROVIDERS,
+  paidAtDate,
+  readPaymentDate,
   readPhoto,
   ReaderError,
   type ApiKeys,
+  type PaymentReading,
   type PhotoReading,
   type ProviderId,
   type Usage,
 } from "./reader";
 import type { BillFile } from "./types";
-import { meterUsage, type MeterUsage } from "./usage";
+import { meterUsage, type MeterUsage, type PaymentTopUp } from "./usage";
 
 /**
  * Electricity meters: bills whose photos show a prepaid kWh meter. Each photo's kWh is read once (by the
  * AI reader the user picked, or typed in by hand) and kept in personal-file-map.readings.json in the bills
  * folder, so a photo is never sent twice and corrections stick.
+ *
+ * A meter photo without a capture date (sent through a chat app, a screenshot) only tells the month. For
+ * those, the top-up's "Payment" file (a bank transfer screenshot) is read for its date: a top-up happens the
+ * same day as its payment. A Payment file is only read when a photo of its top-up needs the date.
  */
 
 /** "meters" in config.local.json. */
 export interface MeterSettings {
-  /** Bill keys whose photos are meter photos; each key is one meter (e.g. "Klaska PLN"). */
+  /** Bill keys whose photos are meter photos; each key is one meter (e.g. "Home Meter"). */
   bills: string[];
   reader: "off" | ProviderId;
   /** Model per provider, so switching back and forth keeps each choice. */
@@ -47,7 +54,7 @@ export function validateMeters(raw: unknown, source: string): MeterSettings {
   if (typeof raw !== "object" || Array.isArray(raw)) throw new Error(`"meters" in ${source} must be an object`);
   const { bills, reader, models, apiKeys } = raw as { bills?: unknown; reader?: unknown; models?: unknown; apiKeys?: unknown };
   if (bills !== undefined && (!Array.isArray(bills) || !bills.every((b) => typeof b === "string"))) {
-    throw new Error(`"meters.bills" in ${source} must be a list of bill names, e.g. ["Klaska PLN"]`);
+    throw new Error(`"meters.bills" in ${source} must be a list of bill names, e.g. ["Home Meter"]`);
   }
   if (reader !== undefined && reader !== "off" && !isProvider(reader)) {
     throw new Error(`"meters.reader" in ${source} must be "off", ${PROVIDERS.map((p) => `"${p.id}"`).join(" or ")}`);
@@ -86,6 +93,16 @@ export interface StoredReading extends PhotoReading {
   costUsd?: number | null;
 }
 
+/** A top-up's Payment file, read for its date (see PaymentReading). */
+export interface StoredPayment extends PaymentReading {
+  sha1: string;
+  by: string;
+  at: string;
+  edited?: boolean;
+  usage?: Usage | null;
+  costUsd?: number | null;
+}
+
 /** Tokens and USD for a set of AI readings. */
 export interface AiTotals {
   photos: number;
@@ -95,7 +112,7 @@ export interface AiTotals {
   unpriced: number;
 }
 
-export function aiTotals(readings: (StoredReading | null | undefined)[]): AiTotals {
+export function aiTotals(readings: ({ usage?: Usage | null; costUsd?: number | null } | null | undefined)[]): AiTotals {
   const t: AiTotals = { photos: 0, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, costUsd: 0, unpriced: 0 };
   for (const r of readings) {
     if (!r?.usage) continue;
@@ -110,24 +127,39 @@ export function aiTotals(readings: (StoredReading | null | undefined)[]): AiTota
   return t;
 }
 
+function addTotals(a: AiTotals, b: AiTotals): AiTotals {
+  return {
+    photos: a.photos + b.photos,
+    usage: { input: a.usage.input + b.usage.input, output: a.usage.output + b.usage.output, cacheRead: a.usage.cacheRead + b.usage.cacheRead, cacheWrite: a.usage.cacheWrite + b.usage.cacheWrite },
+    costUsd: a.costUsd + b.costUsd,
+    unpriced: a.unpriced + b.unpriced,
+  };
+}
+
 interface ReadingsFile {
   _help?: string[];
   photos: Record<string, StoredReading>;
+  /** Payment files read for their date, by file name. */
+  payments?: Record<string, StoredPayment>;
 }
 
 const HELP = [
   "kWh that Personal File Map read from your electricity meter photos, one entry per photo, so no photo is sent to the AI reader twice.",
   "To correct one, change \"kwh\" and/or \"kind\" (\"balance\" = credit left on the meter, \"topup\" = kWh just added, \"other\" = ignore) and set \"edited\": true. You can also do this in the settings window.",
   "Delete an entry to have that photo read again.",
+  "\"payments\": the date read from a top-up's Payment file (\"paidAt\", local time, YYYY-MM-DDTHH:MM:SS), only for top-ups whose photos have no capture date; those photos get that date. To correct it, change \"paidAt\" and set \"edited\": true.",
 ];
 
 export class ReadingStore {
   private data: ReadingsFile;
   private byHash = new Map<string, StoredReading>();
+  private paymentsByHash = new Map<string, StoredPayment>();
 
   private constructor(readonly dir: string, data: ReadingsFile) {
     this.data = data;
     for (const r of Object.values(data.photos)) if (r && typeof r.sha1 === "string") this.byHash.set(r.sha1, r);
+    if (!data.payments || typeof data.payments !== "object") data.payments = {};
+    for (const r of Object.values(data.payments)) if (r && typeof r.sha1 === "string" && typeof r.paidAt === "string") this.paymentsByHash.set(r.sha1, r);
   }
 
   static load(dir: string): ReadingStore {
@@ -153,10 +185,33 @@ export class ReadingStore {
   }
 
   /**
+   * What was read from a payment file, found like a photo's reading: by name, else by content (a renamed
+   * file). `byContent: false` when another payment file has the same content, so one copy's reading isn't
+   * taken for the other.
+   */
+  getPayment(file: string, sha1: string, byContent = true): StoredPayment | null {
+    const byName = this.data.payments![file];
+    if (byName && byName.sha1 === sha1 && typeof byName.paidAt === "string") return byName;
+    return byContent ? this.paymentsByHash.get(sha1) ?? null : null;
+  }
+
+  setPayment(file: string, reading: StoredPayment) {
+    this.data.payments![file] = reading;
+    this.paymentsByHash.set(reading.sha1, reading);
+  }
+
+  /**
    * A photo was converted (HEIC → JPG): its reading moves to the new file and content, so it isn't read
    * again. Returns whether there was a reading to move.
    */
   carryOver(oldSha1: string, newFile: string, newSha1: string): boolean {
+    const payment = this.paymentsByHash.get(oldSha1);
+    if (payment) {
+      for (const [name, r] of Object.entries(this.data.payments!)) if (r === payment) delete this.data.payments![name];
+      this.paymentsByHash.delete(oldSha1);
+      this.setPayment(newFile, { ...payment, sha1: newSha1 });
+      return true;
+    }
     const reading = this.byHash.get(oldSha1);
     if (!reading) return false;
     for (const [name, r] of Object.entries(this.data.photos)) if (r === reading) delete this.data.photos[name];
@@ -166,25 +221,39 @@ export class ReadingStore {
   }
 
   save() {
-    const photos = Object.fromEntries(Object.entries(this.data.photos).sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true })));
-    const out: ReadingsFile = { _help: HELP, photos };
+    const sorted = <T>(r: Record<string, T>) => Object.fromEntries(Object.entries(r).sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true })));
+    const out: ReadingsFile = { _help: HELP, photos: sorted(this.data.photos) };
+    if (Object.keys(this.data.payments!).length) out.payments = sorted(this.data.payments!);
     fs.writeFileSync(path.join(this.dir, READINGS_NAME), JSON.stringify(out, null, 2) + "\n");
   }
 }
 
 // ── Meter photos in the folder ───────────────────────────────────────────────
 
-export type DateSource = "photo" | "file" | "month";
+/**
+ * Where a photo's time comes from: its EXIF capture date · the date read from its top-up's Payment file ·
+ * the file's date (in the right month) · only the month (estimated).
+ */
+export type DateSource = "photo" | "payment" | "file" | "month";
 
 export interface MeterPhoto {
-  meter: string; // the bill key, e.g. "Klaska PLN"
+  meter: string; // the bill key, e.g. "Home Meter"
   file: string;
   month: number;
   ext: string;
   sha1: string;
-  /** When it was taken: the photo's EXIF time, else the file's date if it's in the right month, else mid-month (estimated). */
+  /**
+   * When it was taken: the photo's EXIF time, else the date on its top-up's Payment file, else the file's
+   * date if it's in the right month, else mid-month (estimated).
+   */
   takenAt: Date;
   dateSource: DateSource;
+  /** The photo's own time, before a payment's date is applied. */
+  own: { at: Date; source: Exclude<DateSource, "payment"> };
+  /** The payment file whose date it took (dateSource "payment"), else null. */
+  paymentFile: string | null;
+  /** The kWh bought, from the top-up's Payment Receipt: the amount when there's no Input photo. */
+  bought: { kwh: number; file: string } | null;
   /** "Before" / "Input" / "After" in the file name: what the photo shows (credit left, kWh added, credit left). */
   label: MeterLabel;
   /** Which top-up of the month ("#2" → 2), or null without a "#N". */
@@ -205,10 +274,47 @@ export function meterLabel(fullName: string): MeterLabel | null {
 }
 
 /**
+ * A top-up's payment files: "… Payment" (the bank transfer, read for its date) and "… Payment Receipt" (the
+ * token receipt, read for the kWh bought). Only read when the top-up's photos don't already tell.
+ */
+export interface PaymentFile {
+  meter: string;
+  file: string;
+  kind: "payment" | "receipt";
+  month: number;
+  ext: string;
+  sha1: string;
+  txn: number | null;
+  reading: StoredPayment | null;
+}
+
+/** "Payment" or "Payment Receipt" as the last word(s) of the name ("Home Meter #1 Payment Receipt"), else null. */
+export function paymentKind(fullName: string): PaymentFile["kind"] | null {
+  const w = fullName.trim().toLowerCase().split(/\s+/);
+  if (w[w.length - 1] === "payment") return "payment";
+  if (w[w.length - 1] === "receipt" && w[w.length - 2] === "payment") return "receipt";
+  return null;
+}
+
+/**
  * Photos of a meter bill named "… Before", "… Input" or "… After", oldest first, with what's known about
- * them so far. Other files of the bill (a payment screenshot, a receipt PDF) are ignored: not listed, not read.
+ * them so far. Other files of the bill (a receipt PDF, a check photo) are ignored: not listed, not read.
  */
 export async function meterPhotos(dir: string, year: number, files: BillFile[], meterBills: string[], store: ReadingStore): Promise<MeterPhoto[]> {
+  return (await meterFiles(dir, year, files, meterBills, store)).photos;
+}
+
+/** The meter photos, dated (see datePhotos), and the meters' payment files. */
+export async function meterFiles(dir: string, year: number, files: BillFile[], meterBills: string[], store: ReadingStore) {
+  const payments: PaymentFile[] = [];
+  for (const f of files) {
+    const meter = matchKey(f.name, meterBills);
+    const kind = paymentKind(f.fullName);
+    if (!meter || !PHOTO_EXTENSIONS.has(f.ext) || !kind) continue;
+    const sha1 = createHash("sha1").update(await fs.promises.readFile(path.join(dir, f.file))).digest("hex");
+    payments.push({ meter, file: f.file, kind, month: f.month, ext: f.ext, sha1, txn: f.txn, reading: null });
+  }
+  for (const q of payments) q.reading = store.getPayment(q.file, q.sha1, payments.filter((o) => o.sha1 === q.sha1).length === 1);
   const out: MeterPhoto[] = [];
   const candidates = files
     .filter((f) => PHOTO_EXTENSIONS.has(f.ext))
@@ -229,10 +335,134 @@ export async function meterPhotos(dir: string, year: number, files: BillFile[], 
       takenAt = inMonth ? f.mtime : new Date(year, f.month - 1, 15, 12, 0, i); // keeps the order above within a month
       dateSource = inMonth ? "file" : "month";
     }
-    out.push({ meter, file: f.file, month: f.month, ext: f.ext, sha1, takenAt, dateSource, label, txn: f.txn, reading: store.get(f.file, sha1) });
+    const own = { at: takenAt, source: dateSource as MeterPhoto["own"]["source"] };
+    out.push({ meter, file: f.file, month: f.month, ext: f.ext, sha1, takenAt, dateSource, own, paymentFile: null, bought: null,
+      label, txn: f.txn, reading: store.get(f.file, sha1) });
   }
-  return out.sort((a, b) => a.takenAt.getTime() - b.takenAt.getTime() || LABEL_ORDER[a.label] - LABEL_ORDER[b.label] ||
+  return { photos: datePhotos(out, payments, year), payments };
+}
+
+/** One top-up's files: its photos (if any) and its Payment and Payment Receipt files (if any). */
+export interface TopUpFiles {
+  meter: string;
+  month: number;
+  txn: number | null;
+  photos: MeterPhoto[];
+  payment: PaymentFile | null;
+  receipt: PaymentFile | null;
+}
+
+/**
+ * The files of each top-up: the same meter, month and "#N". A payment file without a "#" in a month whose
+ * photos are all of one top-up goes with that one, whatever its "#".
+ */
+export function topUpFiles(photos: MeterPhoto[], payments: PaymentFile[]): TopUpFiles[] {
+  const groups = new Map<string, TopUpFiles>();
+  const get = (meter: string, month: number, txn: number | null) => {
+    const k = `${meter}\u0000${month}\u0000${txn ?? "-"}`;
+    if (!groups.has(k)) groups.set(k, { meter, month, txn, photos: [], payment: null, receipt: null });
+    return groups.get(k)!;
+  };
+  for (const p of photos) get(p.meter, p.month, p.txn).photos.push(p);
+  for (const q of payments) {
+    let g = groups.get(`${q.meter}\u0000${q.month}\u0000${q.txn ?? "-"}`);
+    if (!g) {
+      const withPhotos = [...groups.values()].filter((x) => x.meter === q.meter && x.month === q.month && x.photos.length > 0);
+      const sameKind = payments.filter((o) => o.meter === q.meter && o.month === q.month && o.kind === q.kind);
+      g = withPhotos.length === 1 && sameKind.length === 1 ? withPhotos[0] : get(q.meter, q.month, q.txn);
+    }
+    if (q.kind === "payment") g.payment ??= q;
+    else g.receipt ??= q;
+  }
+  return [...groups.values()];
+}
+
+/** The date read from a payment file, if it's within a month of the month in its name (else it's likely the wrong file). */
+export function paymentDate(q: PaymentFile | null, year: number): Date | null {
+  const d = q?.reading?.paidAt ? paidAtDate(q.reading.paidAt) : null;
+  if (!q || !d) return null;
+  return Math.abs(d.getFullYear() * 12 + d.getMonth() - (year * 12 + q.month - 1)) <= 1 ? d : null;
+}
+
+/** When a top-up was paid: from its Payment file, else from its receipt. */
+function topUpDate(g: TopUpFiles, year: number): { at: Date; file: string } | null {
+  for (const q of [g.payment, g.receipt]) {
+    const d = paymentDate(q, year);
+    if (q && d) return { at: d, file: q.file };
+  }
+  return null;
+}
+
+/** The kWh bought, as printed on the receipt (or, failing that, on the Payment file). */
+function topUpKwh(g: TopUpFiles): { kwh: number; file: string } | null {
+  for (const q of [g.receipt, g.payment]) if (q?.reading?.kwh) return { kwh: q.reading.kwh, file: q.file };
+  return null;
+}
+
+/** The top-up needs a date from its payment: it has no photos, or a photo without a capture date. */
+const needsDate = (g: TopUpFiles) => g.photos.length === 0 || g.photos.some((p) => p.own.source !== "photo");
+/** The top-up needs the kWh bought: no Input photo, and no Before and After photos to work it out from. */
+const needsKwh = (g: TopUpFiles) =>
+  !g.photos.some((p) => p.label === "input") && !(g.photos.some((p) => p.label === "before") && g.photos.some((p) => p.label === "after"));
+
+/**
+ * Payment files to read now, only where the photos don't tell: the receipt for the kWh bought (or for the
+ * date when there's no Payment file), the Payment file for the date. A Payment file waits while its
+ * receipt is being read, since the receipt usually shows the date too.
+ */
+export function paymentsToRead(photos: MeterPhoto[], payments: PaymentFile[], year: number): PaymentFile[] {
+  const out: PaymentFile[] = [];
+  for (const g of topUpFiles(photos, payments)) {
+    const r = g.receipt;
+    const receiptNeeded = r !== null && ((needsKwh(g) && !g.payment?.reading?.kwh) || (needsDate(g) && !g.payment));
+    if (r && receiptNeeded && !r.reading) out.push(r);
+    const p = g.payment;
+    if (p && !p.reading && needsDate(g) && !paymentDate(r, year) && !(r && receiptNeeded && !r.reading)) out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Sets each photo's time and sorts them, oldest first. A photo with a capture date keeps it. One without
+ * takes the date read from its top-up's payment: the top-up is the same day. They're placed around the
+ * payment's time a minute apart, Before just before it, then Input and After. Each photo also gets the kWh
+ * bought from the top-up's receipt, used when there's no Input photo.
+ */
+export function datePhotos(photos: MeterPhoto[], payments: PaymentFile[], year: number): MeterPhoto[] {
+  for (const g of topUpFiles(photos, payments)) {
+    const date = topUpDate(g, year);
+    const bought = topUpKwh(g);
+    for (const p of g.photos) {
+      p.takenAt = p.own.at;
+      p.dateSource = p.own.source;
+      p.paymentFile = null;
+      p.bought = bought;
+      if (p.own.source === "photo" || !date) continue;
+      p.takenAt = new Date(date.at.getTime() + (p.label === "before" ? -1 : LABEL_ORDER[p.label]) * 60_000);
+      p.dateSource = "payment";
+      p.paymentFile = date.file;
+    }
+  }
+  return photos.sort((a, b) => a.takenAt.getTime() - b.takenAt.getTime() || LABEL_ORDER[a.label] - LABEL_ORDER[b.label] ||
     a.file.localeCompare(b.file, "en", { numeric: true }));
+}
+
+/** Top-ups with only payment files, no meter photos: placed at the payment's date, mid-month without one. */
+export function paymentOnlyTopUps(photos: MeterPhoto[], payments: PaymentFile[], year: number): PaymentTopUp[] {
+  return topUpFiles(photos, payments)
+    .filter((g) => g.photos.length === 0)
+    .map((g) => {
+      const date = topUpDate(g, year);
+      const bought = topUpKwh(g);
+      return {
+        meter: g.meter,
+        at: date?.at ?? new Date(year, g.month - 1, 15, 12),
+        estimated: !date,
+        txn: g.txn,
+        amount: bought?.kwh ?? null,
+        files: [g.payment?.file, g.receipt?.file].filter((f): f is string => Boolean(f)),
+      };
+    });
 }
 
 export interface ReadResult {
@@ -245,12 +475,14 @@ export interface ReadResult {
 }
 
 /**
- * Reads every photo that has no reading yet, a few at a time, saving after each one so progress survives
- * an error. `photos` gets the new readings filled in.
+ * Reads every photo that has no reading yet, and the Payment files in `payments` (those whose top-up needs
+ * the date), a few at a time, saving after each one so progress survives an error. `photos` and `payments`
+ * get the new readings filled in.
  */
 export async function readNewPhotos(
   dir: string,
   photos: MeterPhoto[],
+  payments: PaymentFile[],
   store: ReadingStore,
   provider: ProviderId,
   model: string,
@@ -258,9 +490,9 @@ export async function readNewPhotos(
   logDir: string | null,
   onProgress?: (done: number, total: number) => void
 ): Promise<ReadResult> {
-  const todo = photos.filter((p) => !p.reading);
+  const todo: (MeterPhoto | PaymentFile)[] = [...photos.filter((p) => !p.reading), ...payments.filter((q) => !q.reading)];
   const result: ReadResult = { read: 0, failed: [], stopped: null, totals: aiTotals([]) };
-  const fresh: StoredReading[] = [];
+  const fresh: { usage?: Usage | null; costUsd?: number | null }[] = [];
   let next = 0;
   let done = 0;
   const worker = async () => {
@@ -272,12 +504,21 @@ export async function readNewPhotos(
         log.bytes = original.length;
         const image = await preparePhoto(original, p.ext);
         log.sent = { width: image.width, height: image.height, bytes: image.jpeg.length };
-        const r = await readPhoto(provider, model, apiKey, image, p.file);
-        if (logDir) writeAiLog(logDir, log, r.exchange, r);
-        p.reading = { ...r.reading, sha1: p.sha1, by: `${provider}/${model}`, at: new Date().toISOString(), usage: r.usage, costUsd: r.costUsd };
-        store.set(p.file, p.reading);
+        const by = { sha1: p.sha1, by: `${provider}/${model}`, at: new Date().toISOString() };
+        if ("label" in p) {
+          const r = await readPhoto(provider, model, apiKey, image, p.file);
+          if (logDir) writeAiLog(logDir, log, r.exchange, r);
+          p.reading = { ...r.reading, ...by, usage: r.usage, costUsd: r.costUsd };
+          store.set(p.file, p.reading);
+          fresh.push(p.reading);
+        } else {
+          const r = await readPaymentDate(provider, model, apiKey, image, p.file);
+          if (logDir) writeAiLog(logDir, log, r.exchange, r);
+          p.reading = { ...r.payment, ...by, usage: r.usage, costUsd: r.costUsd };
+          store.setPayment(p.file, p.reading);
+          fresh.push(p.reading);
+        }
         store.save();
-        fresh.push(p.reading);
         result.read++;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -318,6 +559,10 @@ export function editReading(store: ReadingStore, photo: MeterPhoto, kind: PhotoR
 
 export interface Electricity {
   usages: MeterUsage[];
+  /** The meters' Payment files, read or not. */
+  payments: PaymentFile[];
+  /** Payment files still to read for a top-up whose photos have no capture date. */
+  paymentsUnread: PaymentFile[];
   /** "Claude (Anthropic) · claude-haiku-5-5", or null when the reader is off. */
   reader: string | null;
   read: ReadResult | null;
@@ -337,11 +582,11 @@ export async function electricity(
   opts: { read: boolean; logDir?: string | null; onProgress?: (done: number, total: number) => void }
 ): Promise<Electricity> {
   const store = ReadingStore.load(dir);
-  const photos = await meterPhotos(dir, year, files, settings.bills, store);
+  const { photos, payments } = await meterFiles(dir, year, files, settings.bills, store);
   const provider = settings.reader === "off" ? null : settings.reader;
   const model = provider ? modelFor(settings, provider) : "";
   const label = provider ? `${PROVIDERS.find((p) => p.id === provider)!.label} · ${model}` : null;
-  const unread = photos.filter((p) => !p.reading).length;
+  const unread = photos.filter((p) => !p.reading).length + paymentsToRead(photos, payments, year).length;
 
   let read: ReadResult | null = null;
   let blocked: string | null = null;
@@ -349,11 +594,22 @@ export async function electricity(
     const key = provider ? effectiveKey(provider, settings.apiKeys) : null;
     if (!provider) blocked = "No AI reader is chosen in the settings window, so new meter photos aren't read.";
     else if (!key) blocked = `No API key for ${PROVIDERS.find((p) => p.id === provider)!.label} is saved, so new meter photos aren't read.`;
-    else if (opts.read) read = await readNewPhotos(dir, photos, store, provider, model, key, opts.logDir ?? null, opts.onProgress);
+    else if (opts.read) {
+      read = await readNewPhotos(dir, photos, paymentsToRead(photos, payments, year), store, provider, model, key, opts.logDir ?? null, opts.onProgress);
+      // A receipt without a date: its Payment file is read now
+      datePhotos(photos, payments, year);
+      const more = paymentsToRead(photos, payments, year);
+      if (more.length && !read.stopped) {
+        const again = await readNewPhotos(dir, photos, more, store, provider, model, key, opts.logDir ?? null, opts.onProgress);
+        read = { read: read.read + again.read, failed: [...read.failed, ...again.failed], stopped: again.stopped, totals: addTotals(read.totals, again.totals) };
+      }
+    }
   }
+  datePhotos(photos, payments, year); // a payment just read dates the photos of its top-up
+  const paymentOnly = paymentOnlyTopUps(photos, payments, year);
 
   const usages = settings.bills
-    .map((meter) => meterUsage(meter, photos.filter((p) => p.meter === meter), year))
-    .filter((u) => u.photos.length > 0);
-  return { usages, reader: label, read, blocked };
+    .map((meter) => meterUsage(meter, photos.filter((p) => p.meter === meter), year, paymentOnly.filter((t) => t.meter === meter)))
+    .filter((u) => u.photos.length > 0 || u.events.length > 0);
+  return { usages, payments, paymentsUnread: paymentsToRead(photos, payments, year), reader: label, read, blocked };
 }

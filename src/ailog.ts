@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { PRICES_CHECKED, PROVIDERS, type Exchange, type ReadOutcome, type Usage } from "./reader";
+import { PAYMENT_INSTRUCTIONS, PRICES_CHECKED, PROVIDERS, type Exchange, type PaymentOutcome, type ReadOutcome, type Usage } from "./reader";
 
 /**
  * One Markdown file per AI request in ./logs next to the app: what was asked, what came back, tokens and
@@ -16,7 +16,7 @@ export interface LogPhoto {
   sent: { width: number; height: number; bytes: number } | null;
 }
 
-export function writeAiLog(logDir: string, photo: LogPhoto, exchange: Exchange, outcome: ReadOutcome | null): string | null {
+export function writeAiLog(logDir: string, photo: LogPhoto, exchange: Exchange, outcome: ReadOutcome | PaymentOutcome | null): string | null {
   try {
     fs.mkdirSync(logDir, { recursive: true });
     const t = exchange.startedAt;
@@ -33,11 +33,20 @@ export function writeAiLog(logDir: string, photo: LogPhoto, exchange: Exchange, 
   }
 }
 
-function render(photo: LogPhoto, x: Exchange, o: ReadOutcome | null): string {
+function render(photo: LogPhoto, x: Exchange, o: ReadOutcome | PaymentOutcome | null): string {
   const provider = PROVIDERS.find((p) => p.id === x.provider)?.label ?? x.provider;
-  const r = o?.reading;
+  const isPayment = (x.request as { system?: unknown; instructions?: unknown } | null)?.system === PAYMENT_INSTRUCTIONS ||
+    (x.request as { instructions?: unknown } | null)?.instructions === PAYMENT_INSTRUCTIONS;
+  const r = o && "reading" in o ? o.reading : null;
+  const pay = o && "payment" in o ? o.payment : null;
   const result = x.error
     ? `**Failed:** ${x.error}`
+    : pay
+      ? (pay.paidAt ? `Paid **${pay.paidAt}**` : "No payment date found") +
+        (pay.kwh ? ` · **${pay.kwh.toFixed(2)} kWh** bought` : "") +
+        (pay.amount ? ` · ${[pay.currency, pay.amount.toLocaleString("en-US")].filter(Boolean).join(" ")}` : "") +
+        ` · ${pay.confidence} confidence` +
+        (pay.note ? ` · note: ${pay.note}` : "")
     : r
       ? `${r.kind === "balance" ? "Balance (credit left)" : r.kind === "topup" ? "Top-up (kWh added)" : "Other / unreadable"}` +
         (r.kind !== "other" ? ` · **${r.kwh.toFixed(2)} kWh**` : "") +
@@ -68,7 +77,7 @@ function render(photo: LogPhoto, x: Exchange, o: ReadOutcome | null): string {
   ]);
 
   const out = [
-    `# Meter photo reading: ${photo.file}`,
+    `# ${isPayment ? "Payment date reading" : "Meter photo reading"}: ${photo.file}`,
     "",
     "| | |",
     "|---|---|",

@@ -41,10 +41,34 @@
     padding-bottom: 104px;
   }
   main { padding: 24px 28px 0; } /* full window width */
-  .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
-  .sidebar { position: sticky; top: 16px; max-height: calc(100vh - 120px); overflow-y: auto; border-radius: 12px; }
-  .sidebar .card:last-child { margin-bottom: 0; }
+  .layout { display: block; }
   .main-col { min-width: 0; }
+  /* Header buttons that open the bills (full-page dialog) and the folder & meters (sheet on the right) */
+  .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .header-actions button { display: inline-flex; align-items: center; gap: 7px; }
+  .header-actions button svg { width: 15px; height: 15px; }
+  .header-actions .count { color: var(--muted); font-weight: 500; }
+  /* Folder & meters: a sheet anchored to the right edge */
+  dialog.sheet {
+    margin: 0 0 0 auto; height: 100vh; max-height: 100vh; width: min(460px, 100vw); max-width: 100vw; padding: 0;
+    border: 0; border-left: 1px solid var(--border); background: var(--bg); color: var(--fg); box-shadow: -24px 0 64px rgba(0,0,0,.25);
+  }
+  dialog.sheet::backdrop { background: rgba(9, 9, 11, .45); backdrop-filter: blur(2px); }
+  dialog.sheet[open] { display: flex; flex-direction: column; animation: sheet-in .2s ease-out; }
+  @keyframes sheet-in { from { transform: translateX(32px); opacity: 0; } }
+  dialog.sheet .modal-head { padding: 16px 16px 8px 20px; align-items: center; }
+  dialog.sheet .modal-body { padding: 8px 16px 16px; flex: 1; }
+  dialog.sheet .card:last-child { margin-bottom: 0; }
+  /* Bills: a full-page dialog */
+  dialog.page {
+    margin: 0; width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh; padding: 0; border: 0;
+    background: var(--bg); color: var(--fg);
+  }
+  dialog.page[open] { display: flex; flex-direction: column; animation: pop .14s ease-out; }
+  dialog.page .modal-head { width: 100%; max-width: 1180px; margin: 0 auto; padding: 20px 24px 12px; align-items: center; }
+  dialog.page .modal-body { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 24px 24px; flex: 1; }
+  dialog.page .card.bills { margin-bottom: 0; }
+  @media (prefers-reduced-motion: reduce) { dialog.sheet[open], dialog.page[open] { animation: none; } }
   .bills { container-type: inline-size; } /* bill rows adapt to the column, not the window */
   header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
   h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
@@ -269,9 +293,8 @@
   @media (max-width: 900px) {
     main { padding: 20px 16px 0; }
     .footer-in { padding: 12px 16px; }
-    .layout { grid-template-columns: minmax(0, 1fr); }
-    .sidebar { position: static; max-height: none; overflow: visible; order: -1; }
-    .sidebar .card:last-child { margin-bottom: 16px; }
+    dialog.page .modal-head { padding: 16px 16px 10px; }
+    dialog.page .modal-body { padding: 0 16px 16px; }
   }
 </style>
 </head>
@@ -282,7 +305,17 @@
       <h1>Personal File Map</h1>
       <div class="sub" id="appDir"><span class="sk inline" style="width:420px;max-width:70vw"></span></div>
     </div>
-    <span class="chip" id="configChip"><span class="sk inline" style="width:90px;height:10px"></span></span>
+    <div class="header-actions">
+      <span class="chip" id="configChip"><span class="sk inline" style="width:90px;height:10px"></span></span>
+      <button type="button" id="openBills" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>
+        Bills <span class="count" id="billsButtonCount"></span>
+      </button>
+      <button type="button" id="openSettings" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+        Folder &amp; meters
+      </button>
+    </div>
   </header>
 
   <div class="banner error hidden" id="configError"></div>
@@ -290,6 +323,36 @@
 
   <div class="layout">
     <div class="main-col">
+
+    <section class="card hidden" id="startCard">
+      <div class="card-head"><h2>Get started</h2></div>
+      <p class="help" style="margin-bottom:12px">Your bills and when each is due are under <strong>Bills</strong>. Where the files are, and the electricity meter photos and AI reader, are under <strong>Folder &amp; meters</strong>. Turn on ⚡ for a meter's bill and its photo readings show here.</p>
+      <div class="add-row" style="margin-top:0">
+        <button type="button" id="startBills">Open bills</button>
+        <button type="button" class="ghost" id="startSettings">Folder &amp; meters</button>
+      </div>
+    </section>
+
+    <section class="card hidden" id="readingsCard">
+      <div class="card-head">
+        <h2>Meter readings</h2>
+        <div class="toolbar"><button type="button" id="readPhotos">Read new photos</button></div>
+      </div>
+      <p class="help">The kWh on each meter photo, oldest first. Times come from the photos' capture dates, or for photos without one, from the top-up's Payment file. Fix a misread value or type here: it's saved to <code id="readingsName">personal-file-map.readings.json</code> in the bills folder right away and never read again. Usage is worked out from these when you generate the report.</p>
+      <div id="readings"></div>
+      <div class="read-status" id="readStatus"></div>
+    </section>
+    </div>
+
+  </div>
+</main>
+
+<dialog class="page" id="billsDialog" aria-labelledby="billsTitle">
+  <div class="modal-head">
+    <h2 id="billsTitle" style="font-size:20px">Bills</h2>
+    <button type="button" id="closeBills">Done</button>
+  </div>
+  <div class="modal-body">
     <section class="card bills">
       <div class="card-head">
         <h2>Bills and when they're due <span class="note" id="billCount"></span></h2>
@@ -298,7 +361,7 @@
           <input type="search" id="filter" placeholder="Filter bills" aria-label="Filter bills">
         </div>
       </div>
-      <p class="help">A bill's name ends at a number: <code>#1</code>, <code>#2</code> mark separate payments or top-ups in a month (<code>Klaska PLN #1 Before</code>, <code>Klaska PLN #2 After</code>: 2 that month, the small number on the month), and a plain number is a document of the same payment (<code>PBB Klaska 1 SPPT</code>, <code>PBB Klaska 3 Lunas</code>: one bill, one payment). A name also covers every bill that starts with it; when several names match, the longest wins; case doesn't matter. A scheduled past month without a file is <em>missing</em>, the current month is <em>due</em>.</p>
+      <p class="help">A bill's name ends at a number: <code>#1</code>, <code>#2</code> mark separate payments or top-ups in a month (<code>Home Meter #1 Before</code>, <code>Home Meter #2 After</code>: 2 that month, the small number on the month), and a plain number is a document of the same payment (<code>Property Tax 1 Assessment</code>, <code>Property Tax 3 Receipt</code>: one bill, one payment). A name also covers every bill that starts with it; when several names match, the longest wins; case doesn't matter. A scheduled past month without a file is <em>missing</em>, the current month is <em>due</em>.</p>
       <div class="legend">
         <span><i style="background:var(--on)"></i>expected</span>
         <span><i style="background:var(--dot);border-radius:50%;width:6px;height:6px;vertical-align:1px"></i>file found</span>
@@ -315,19 +378,15 @@
         <span class="note" id="autoNote"></span>
       </div>
     </section>
+  </div>
+</dialog>
 
-    <section class="card hidden" id="readingsCard">
-      <div class="card-head">
-        <h2>Meter readings</h2>
-        <div class="toolbar"><button type="button" id="readPhotos">Read new photos</button></div>
-      </div>
-      <p class="help">The kWh on each meter photo, oldest first. Times come from the photos' capture dates. Fix a misread value or type here: it's saved to <code id="readingsName">personal-file-map.readings.json</code> in the bills folder right away and never read again. Usage is worked out from these when you generate the report.</p>
-      <div id="readings"></div>
-      <div class="read-status" id="readStatus"></div>
-    </section>
-    </div>
-
-    <aside class="sidebar">
+<dialog class="sheet" id="settingsSheet" aria-labelledby="settingsTitle">
+  <div class="modal-head">
+    <h2 id="settingsTitle">Folder &amp; meters</h2>
+    <button type="button" class="ghost icon" id="closeSettings" aria-label="Close">✕</button>
+  </div>
+  <div class="modal-body">
       <section class="card">
         <div class="card-head"><h2>Bills folder</h2></div>
         <p class="help">Where your <code>YYYYMM Name.ext</code> files are. <code>./</code> is the app's own folder; a relative path, an absolute path or <code>~/…</code> also work. The PDF is saved into this folder.</p>
@@ -345,10 +404,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg>AI
           </span>
         </div>
-        <p class="help">Reads the kWh on photos of a prepaid electricity meter, so the report shows how much you use. Turn on <span class="zap-inline" id="zapHelp"></span> next to the meter's bill (e.g. <code>Klaska PLN</code>) to mark its photos.</p>
-        <div class="note">Name the photos of each top-up like this. Only photos named <strong>Before</strong>, <strong>Input</strong> or <strong>After</strong> are read; other files of the meter's bill (a payment screenshot, a receipt) are left out.</div>
+        <p class="help">Reads the kWh on photos of a prepaid electricity meter, so the report shows how much you use. Turn on <span class="zap-inline" id="zapHelp"></span> next to the meter's bill (e.g. <code>Home Meter</code>) to mark its photos.</p>
+        <div class="note">Name the photos of each top-up like this. Photos named <strong>Before</strong>, <strong>Input</strong> or <strong>After</strong> are read. A <strong>Payment</strong> and a <strong>Payment Receipt</strong> are only read when the photos don't tell: the payment for the date when the photos have none, the receipt for the kWh bought when there's no Input photo. Other files of the meter's bill are left out.</div>
         <ul class="examples" id="meterExamples"></ul>
-        <p class="help" id="meterNaming">The month (<code>YYYYMM</code>), the meter's name, <code>#1</code> for the first top-up that month (<code>#2</code> for a second one), then <code>Before</code>, <code>Input</code> or <code>After</code>. Use the original photos, not screenshots of them: the time each photo was taken is read from the file.</p>
+        <p class="help" id="meterNaming">The month (<code>YYYYMM</code>), the meter's name, <code>#1</code> for the first top-up that month (<code>#2</code> for a second one), then <code>Before</code>, <code>Input</code> or <code>After</code>. Use the original photos, not screenshots of them: the time each photo was taken is read from the file. For photos that lost it (sent through a chat app), add the top-up's <code>Payment</code> screenshot: its date is used, since the top-up is the same day. A top-up with only <code>Payment</code> files still counts; its credit before and after are estimated.</p>
         <div class="field">
           <label for="reader">AI reader</label>
           <select id="reader"></select>
@@ -371,10 +430,8 @@
         </div>
         <p class="note" id="readerNote"></p>
       </section>
-
-    </aside>
   </div>
-</main>
+</dialog>
 
 <dialog class="modal" id="schedulesDialog" aria-labelledby="schedulesTitle">
   <div class="modal-head">
@@ -690,6 +747,7 @@ function render() {
   }
 
   $("billCount").textContent = rows.length ? `· ${rows.length}` : "";
+  $("billsButtonCount").textContent = rows.length ? String(rows.length) : "";
   const autoCount = rows.filter((r) => r.auto).length;
   $("autoNote").textContent = autoCount
     ? `${autoCount} bill${autoCount === 1 ? "" : "s"} found in the folder ${autoCount === 1 ? "wasn't" : "weren't"} listed yet and ${autoCount === 1 ? "was" : "were"} added as monthly.`
@@ -704,11 +762,24 @@ function renderHeader() {
   chip.className = "chip " + (state.configExists && !state.configError ? "green" : "amber");
 }
 
+// ── Bills (full-page dialog) and Folder & meters (sheet on the right) ───────
+// Both are modal dialogs: Esc closes them; the sheet also closes on a click outside it.
+function openSettings() { if (!$("settingsSheet").open) $("settingsSheet").showModal(); }
+function openBills() { if (!$("billsDialog").open) $("billsDialog").showModal(); }
+$("openSettings").addEventListener("click", openSettings);
+$("startSettings").addEventListener("click", openSettings);
+$("closeSettings").addEventListener("click", () => $("settingsSheet").close());
+$("settingsSheet").addEventListener("click", (e) => { if (e.target === $("settingsSheet")) $("settingsSheet").close(); });
+$("openBills").addEventListener("click", openBills);
+$("startBills").addEventListener("click", openBills);
+$("closeBills").addEventListener("click", () => $("billsDialog").close());
+
 function renderFolderInfo() {
   const info = $("folderInfo");
   info.className = "folder-info";
   if (!preview) { info.textContent = "Looking…"; return; }
   if (!preview.ok) {
+    openSettings(); // the folder needs fixing: show where
     info.classList.add("error");
     info.replaceChildren(preview.error);
     if (preview.blocked) {
@@ -932,11 +1003,13 @@ function renderMeterExamples() {
   const year = preview && preview.ok ? preview.year : now.getFullYear();
   const month = year === now.getFullYear() ? now.getMonth() + 1 : 1;
   const prefix = `${year}${String(month).padStart(2, "0")}`;
-  const meter = meterSettings().bills[0] || "Klaska PLN";
+  const meter = meterSettings().bills[0] || "Home Meter";
   const items = [
     ["#1 Before", "the credit left, just before topping up"],
     ["#1 Input", "the kWh just added: the meter's screen after entering the token, or the receipt"],
     ["#1 After", "the credit right after topping up"],
+    ["#1 Payment", "optional: the bank transfer; read for its date only when the photos have none, or there are no photos"],
+    ["#1 Payment Receipt", "optional: the token receipt; read for the kWh bought only when there's no Input photo"],
   ];
   $("meterExamples").replaceChildren(...items.map(([part, what]) => el("li", {}, el("code", {}, `${prefix} ${meter} ${part}.jpg`), what)));
 }
@@ -987,7 +1060,7 @@ function renderReader() {
     note.replaceChildren("Not set. ", el("button", { type: "button", class: "linkish", onclick: () => api("open", { target: `keys:${p.id}` }) }, "Create a key"),
       " in your account, paste it here and click Save.");
   }
-  $("readerNote").textContent = `Only the Before, Input and After photos of ⚡ bills are sent to ${p.label.replace(/^.*\((.*)\)$/, "$1")}, scaled down, once each. The key is saved in config.local.json next to the app: if that folder is synced or shared, the key goes with it.`;
+  $("readerNote").textContent = `Only the Before, Input and After photos of ⚡ bills (and a top-up's Payment or Payment Receipt file, only when the photos don't give its date or kWh) are sent to ${p.label.replace(/^.*\((.*)\)$/, "$1")}, scaled down, once each. The key is saved in config.local.json next to the app: if that folder is synced or shared, the key goes with it.`;
   renderMeterActions();
 }
 
@@ -1075,13 +1148,14 @@ const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { day: "nume
 const fmtWhen = (iso) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
 // Where a photo's time comes from when it isn't the camera's own: marked in the Taken column, explained under the table
-const DATE_MARKS = { file: "*", month: "†" };
+const DATE_MARKS = { payment: "‡", file: "*", month: "†" };
 const DATE_NOTES = {
+  payment: "No capture date in the photo, so the date and time on the top-up's Payment file is used: the top-up is the same day as the payment.",
   file: "No capture date in the photo, so the file's date is used.",
   month: "No capture date in the photo and the file's date is in another month, so only the month is known: usage between top-ups is still exact, but days and kWh a day can't be measured around it; use the original photo (not a screenshot or a copy sent through a chat app) to get the real time.",
 };
 function dateNotes(photos) {
-  const used = ["file", "month"].filter((s) => photos.some((p) => p.dateSource === s));
+  const used = ["payment", "file", "month"].filter((s) => photos.some((p) => p.dateSource === s));
   if (used.length === 0) return null;
   return el("div", { class: "date-notes" }, ...used.map((s) =>
     el("div", { class: s === "month" ? "estimated" : "" }, el("span", { class: "mark" }, DATE_MARKS[s]), DATE_NOTES[s])));
@@ -1098,7 +1172,7 @@ function showPhoto(ph, meter) {
   $("photoTitle").textContent = ph.file;
   $("photoMeta").textContent = [
     meter + (label ? ` · ${label}` : ""),
-    `Taken ${ph.dateSource === "month" ? `about ${fmtDay(ph.takenAt)} (no capture date)` : fmtWhen(ph.takenAt)}` + (ph.dateSource === "file" ? " (file date)" : ""),
+    `Taken ${ph.dateSource === "month" ? `about ${fmtDay(ph.takenAt)} (no capture date)` : fmtWhen(ph.takenAt)}` + (ph.dateSource === "file" ? " (file date)" : ph.paymentFile ? ` (from ${ph.paymentFile})` : ""),
     r ? (r.kind === "other" ? "Ignored" : `${r.kwh.toFixed(2)} kWh ${kind}`) + ` · read by ${r.edited ? "you" : r.by.split("/").pop()}` : "Not read yet",
   ].join(" · ");
   const url = "api/meters/photo?" + new URLSearchParams({ folder: $("folder").value.trim(), file: ph.file });
@@ -1117,7 +1191,7 @@ function showPhoto(ph, meter) {
 
 function renderMeterActions() {
   const btn = $("readPhotos");
-  const unread = meterData ? meterData.meters.reduce((n, m) => n + m.unread, 0) : 0;
+  const unread = meterData ? meterData.meters.reduce((n, m) => n + m.unread + m.unreadPayments, 0) : 0; // Payment files needed for a date count too
   const p = provider();
   const key = p && state.keys[p.id].hint !== ""; // a key is in use: saved, typed (not written yet) or from the environment
   btn.disabled = meterBusy || unread === 0 || !p || !key;
@@ -1130,11 +1204,12 @@ function renderMeters() {
   const card = $("readingsCard");
   const bills = meterSettings().bills;
   card.classList.toggle("hidden", bills.length === 0);
+  $("startCard").classList.toggle("hidden", bills.length > 0); // nothing on the page without a meter: point to the two buttons
   renderMeterActions();
   const box = $("readings");
   const status = $("readStatus");
   status.className = "read-status" + (meterMessage && meterMessage.kind ? " " + meterMessage.kind : "");
-  status.textContent = meterMessage ? meterMessage.text : meterData && meterData.blocked && meterData.meters.some((m) => m.unread) ? meterData.blocked : "";
+  status.textContent = meterMessage ? meterMessage.text : meterData && meterData.blocked && meterData.meters.some((m) => m.unread || m.unreadPayments) ? meterData.blocked : "";
   if (bills.length === 0) return;
   if (!meterData) {
     box.replaceChildren(el("div", { "aria-label": "Loading meter photos" },
@@ -1143,7 +1218,7 @@ function renderMeters() {
   }
   if (meterData.meters.length === 0) {
     const ex = $("meterExamples").querySelector("code");
-    box.replaceChildren(el("div", { class: "empty" }, `No photos (JPG, PNG or HEIC) of ${bills.join(", ")} named Before, Input or After in the bills folder yet. Name them like `, el("code", {}, ex ? ex.textContent : "202611 Klaska PLN #1 Before.jpg"), " (see Electricity meters)."));
+    box.replaceChildren(el("div", { class: "empty" }, `No photos (JPG, PNG or HEIC) of ${bills.join(", ")} named Before, Input or After in the bills folder yet. Name them like `, el("code", {}, ex ? ex.textContent : "202611 Home Meter #1 Before.jpg"), " (see Electricity meters)."));
     return;
   }
   box.replaceChildren(...meterData.meters.map((m) => {
@@ -1169,7 +1244,7 @@ function renderMeters() {
       const byModel = !r ? "" : r.edited ? "you" : r.by.split("/").pop();
       const byDetail = !r ? "" : [r.code ? `code ${r.code}` : "", unsure ? `${r.confidence} confidence` : "", r.note].filter(Boolean).join(" · ");
       return el("tr", {},
-        el("td", { class: "when" + (ph.dateSource === "month" ? " estimated" : ""), title: DATE_NOTES[ph.dateSource] || "From the photo's capture date" },
+        el("td", { class: "when" + (ph.dateSource === "month" ? " estimated" : ""), title: ph.paymentFile ? `${DATE_NOTES.payment} (${ph.paymentFile})` : DATE_NOTES[ph.dateSource] || "From the photo's capture date" },
           ph.dateSource === "month" ? fmtDay(ph.takenAt) : fmtWhen(ph.takenAt), // a guessed day has no real time to show
           DATE_MARKS[ph.dateSource] ? el("sup", { "aria-hidden": "true" }, DATE_MARKS[ph.dateSource]) : null),
         el("td", { class: "file" }, el("button", { type: "button", class: "file-link", title: `${ph.file}: click to view`, onclick: () => showPhoto(ph, m.meter) }, ph.file)),

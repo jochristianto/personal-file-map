@@ -387,12 +387,15 @@ function forWindow(e: Electricity) {
       balance: u.balance && { kwh: u.balance.kwh, at: u.balance.at.toISOString() },
       runsOut: u.runsOut?.toISOString() ?? null,
       unread: u.unread,
-      ai: aiTotals(u.photos.map((p) => p.reading)),
+      /** Payment files to read because a photo of their top-up has no capture date. */
+      unreadPayments: e.paymentsUnread.filter((q) => q.meter === u.meter).length,
+      ai: aiTotals([...u.photos.map((p) => p.reading), ...e.payments.filter((q) => q.meter === u.meter).map((q) => q.reading)]),
       problems: u.events.filter((e) => e.problem).map((e) => ({ at: e.at.toISOString(), estimated: e.estimated, problem: e.problem })),
       photos: u.photos.map((p) => ({
         file: p.file,
         takenAt: p.takenAt.toISOString(),
         dateSource: p.dateSource,
+        paymentFile: p.paymentFile,
         label: p.label,
         reading: p.reading && {
           kind: kindOf(p) ?? p.reading.kind, // what the numbers use: your correction, else the file's label

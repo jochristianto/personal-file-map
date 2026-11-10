@@ -641,7 +641,7 @@ function drawTable(r: Painter, rep: Report, items: Item[]) {
       b.cells.forEach((state, i) => {
         const cx = monthX + COL.month * i + COL.month / 2;
         r.glyph(state, cx, cy);
-        // Two or more payments/top-ups that month (e.g. "Klaska PLN #1 …" and "Klaska PLN #2 …")
+        // Two or more payments/top-ups that month (e.g. "Home Meter #1 …" and "Home Meter #2 …")
         if (b.transactions[i] > 1) r.text(`${b.transactions[i]}`, cx + 6.2, cy - 4.2, { size: 5.6, weight: "bold", color: C.greenText });
       });
       const n = b.paidMonths.length;
@@ -768,12 +768,14 @@ const READINGS_BOTTOM = H - M - 14;
 function drawMeterOverview(r: Painter, rep: Report, e: Electricity, u: MeterUsage) {
   const year = rep.year;
   const edited = u.photos.filter((p) => p.reading?.edited).length;
+  const byPayment = u.photos.filter((p) => p.dateSource === "payment").length;
   r.text("ELECTRICITY", M, M + 4, { size: 7.5, weight: "semibold", color: C.muted, spacing: 1.2 });
   r.text(`${u.meter} · ${year}`, M, M + 26, { size: 24, weight: "bold" });
   const sub = [
     `${u.photos.length} meter photo${u.photos.length === 1 ? "" : "s"}`,
     e.reader ? `read by ${e.reader}` : "no AI reader chosen",
     edited ? `${edited} corrected by hand` : "",
+    byPayment ? `${byPayment} dated by their top-up's payment` : "",
     u.estimatedDates ? `${u.estimatedDates} without a capture date (only the month is known)` : "",
   ].filter(Boolean);
   r.text(sub.join("  ·  "), M, M + 50, { size: 8.5, color: C.muted, maxW: TW - 220 });
@@ -811,7 +813,7 @@ function drawMeterOverview(r: Painter, rep: Report, e: Electricity, u: MeterUsag
     f.avgDays !== null ? `about every ${Math.round(f.avgDays)} days` : f.count ? "" : "none yet",
     f.count ? `${kwh(u.totalToppedUp, 0)} kWh in total` : "");
   kpi(3, "wallet", "Balance", u.balance ? kwh(u.balance.kwh, 1) : "—", u.balance ? "kWh" : "",
-    u.balance ? `at the last photo, ${pointLabel(u.balance)}` : "no balance photo yet",
+    u.balance ? (u.balance.kwhEstimated ? `estimated, after the top-up on ${pointLabel(u.balance)}` : `at the last photo, ${pointLabel(u.balance)}`) : "no balance photo yet",
     f.next ? `next top-up around ${shortDate(f.next)}` : u.runsOut ? `runs out about ${shortDate(u.runsOut)}` : "");
 
   const top = ky + kh + 12;
@@ -951,7 +953,7 @@ function drawNextTopUp(r: Painter, rep: Report, u: MeterUsage, x: number, y: num
     });
   }
   if (u.runsOut && u.balance) items.push({ label: "Credit runs out", value: `about ${shortDate(u.runsOut)}`, notes: [`${kwh(u.balance.kwh, 1)} kWh left on ${pointLabel(u.balance)}`] });
-  if (f.last) items.push({ label: "Last top-up", value: `${eventLabel(f.last)} · ${kwh(f.last.amount, 0)} kWh`, notes: f.last.estimated ? undefined : [`${days(f.last.at, today)} days ago`] });
+  if (f.last) items.push({ label: "Last top-up", value: `${eventLabel(f.last)} · ${f.last.amountUnknown && !f.last.amountInferred ? "?" : kwh(f.last.amount, 0)} kWh`, notes: f.last.estimated ? undefined : [`${days(f.last.at, today)} days ago`] });
   if (f.avgDays !== null) items.push({ label: "Usually every", value: `${Math.round(f.avgDays)} days`, notes: [`${kwh(f.perMonth ?? 0, 1)} top-ups a month`] });
   if (f.avgUsed !== null) items.push({ label: "Used per top-up", value: `${kwh(f.avgUsed, 0)} kWh`, notes: ["average, from one top-up to the next"] });
   if (f.usualBefore !== null) items.push({ label: "You top up at", value: `${kwh(f.usualBefore, 0)} kWh left`, notes: ["usual credit just before a top-up"] });
@@ -1008,6 +1010,12 @@ interface TopUpRow {
   amountInferred: boolean;
   after: number | null;
   afterDerived: boolean;
+  /** ~: estimated around a payment-only top-up. */
+  beforeEstimated: boolean;
+  afterEstimated: boolean;
+  usedEstimated: boolean;
+  /** Payment only and its kWh isn't known: "?". */
+  amountUnknown: boolean;
   used: number | null;
   perDay: number | null;
   note: string;
@@ -1019,10 +1027,19 @@ function topUpRows(u: MeterUsage): TopUpRow[] {
   const rows: TopUpRow[] = u.events.map((ev, i) => {
     const notes: string[] = [];
     if (ev.problem) notes.push(ev.problem);
-    if (ev.amountInferred) notes.push("no photo of the amount: after − before");
-    if (!ev.after && ev.before) notes.push("no after photo: before + top-up");
-    if (!ev.before) notes.push("no before photo");
-    if (ev.estimated) notes.push("no capture date: month only");
+    if (ev.paymentOnly) {
+      notes.push(ev.before || ev.after ? "payment only: credit before and after estimated from usage" : "payment only: no photos");
+      if (ev.amountFromReceipt) notes.push("kWh from the Payment Receipt");
+      else if (ev.amountInferred) notes.push("kWh bought estimated from usage");
+      else notes.push("kWh bought unknown: add the Payment Receipt");
+      if (ev.estimated) notes.push("no date on the payment: month only");
+    } else {
+      if (ev.amountFromReceipt) notes.push("no photo of the amount: kWh from the Payment Receipt");
+      if (ev.amountInferred) notes.push("no photo of the amount: after − before");
+      if (!ev.after && ev.before) notes.push("no after photo: before + top-up");
+      if (!ev.before) notes.push("no before photo");
+      if (ev.estimated) notes.push("no capture date: month only");
+    }
     return {
       kind: "topup",
       n: i + 1,
@@ -1030,10 +1047,14 @@ function topUpRows(u: MeterUsage): TopUpRow[] {
       label: ev.estimated ? `${MON[ev.at.getMonth()]}${ev.txn ? ` #${ev.txn}` : ""}` : `${DAYS[ev.at.getDay()]} ${shortDate(ev.at)}`,
       sincePrevDays: ev.sincePrevDays,
       before: ev.before?.kwh ?? null,
-      amount: ev.amount,
-      amountInferred: ev.amountInferred,
+      amount: ev.amountUnknown && !ev.amountInferred ? null : ev.amount,
+      amountInferred: ev.amountInferred && !ev.paymentOnly,
       after: ev.credit,
       afterDerived: !ev.after && ev.credit !== null,
+      beforeEstimated: ev.beforeEstimated,
+      afterEstimated: ev.afterEstimated,
+      usedEstimated: ev.usedEstimated,
+      amountUnknown: ev.amountUnknown,
       used: ev.usedSincePrev,
       perDay: ev.perDay,
       note: notes.join(" · "),
@@ -1054,6 +1075,10 @@ function topUpRows(u: MeterUsage): TopUpRow[] {
       amountInferred: false,
       after: null,
       afterDerived: false,
+      beforeEstimated: false,
+      afterEstimated: false,
+      usedEstimated: false,
+      amountUnknown: false,
       used: s.used,
       perDay: s.perDay,
       note: "latest photo: credit left, no top-up yet",
@@ -1107,22 +1132,29 @@ function drawTopUpsPage(r: Painter, rep: Report, u: MeterUsage, rows: TopUpRow[]
     r.text(row.kind === "now" ? "" : `${row.n}`, col.n, cy, { size: 7.8, color: C.faint });
     r.text(row.label, col.date, cy, { size: 8, weight: "medium", color: dim ? C.muted : C.fg2 });
     r.text(row.sincePrevDays === null ? "—" : `${Math.round(row.sincePrevDays)}`, col.since, cy, { size: 8, weight: "semibold", color: row.sincePrevDays === null ? C.faint : C.fg, align: "right" });
-    r.text(row.before === null ? "—" : kwh(row.before, 2), col.before, cy, { size: 8, color: row.before === null ? C.faint : C.fg2, align: "right" });
+    const est = (on: boolean) => (on ? "~" : "");
+    r.text(row.before === null ? "—" : est(row.beforeEstimated) + kwh(row.before, 2), col.before, cy, { size: 8, color: row.before === null || row.beforeEstimated ? C.faint : C.fg2, align: "right" });
     if (row.amount !== null) {
       r.text(`+${kwh(row.amount, 2)}${row.amountInferred ? "*" : ""}`, col.added, cy, { size: 8, weight: "semibold", color: C.greenText, align: "right" });
+    } else if (row.amountUnknown) r.text("?", col.added, cy, { size: 8, color: C.faint, align: "right" });
+    if (row.after !== null) {
+      r.text(`${est(row.afterEstimated)}${kwh(row.after, 2)}${row.afterDerived && !row.afterEstimated ? "*" : ""}`, col.after, cy, { size: 8, color: row.afterEstimated ? C.faint : C.fg2, align: "right" });
     }
-    if (row.after !== null) r.text(`${kwh(row.after, 2)}${row.afterDerived ? "*" : ""}`, col.after, cy, { size: 8, color: C.fg2, align: "right" });
-    r.text(row.used === null ? "—" : kwh(row.used, 1), col.used, cy, { size: 8, weight: "semibold", color: row.used === null ? C.faint : C.fg, align: "right" });
-    r.text(row.perDay === null ? "—" : kwh(row.perDay, 1), col.perDay, cy, { size: 8, color: C.muted, align: "right" });
+    r.text(row.used === null ? "—" : est(row.usedEstimated) + kwh(row.used, 1), col.used, cy, { size: 8, weight: "semibold", color: row.used === null ? C.faint : C.fg, align: "right" });
+    r.text(row.perDay === null ? "—" : est(row.usedEstimated) + kwh(row.perDay, 1), col.perDay, cy, { size: 8, color: C.muted, align: "right" });
     r.text(row.note, col.note, cy, { size: 7, color: row.problem ? C.roseText : C.muted, maxW: M + TW - col.note - 12 });
     d.moveTo(M, y + TOPUP_ROW_H).lineTo(M + TW, y + TOPUP_ROW_H).lineWidth(0.5).stroke(C.line);
     y += TOPUP_ROW_H;
   }
   d.restore();
   d.lineWidth(0.75).roundedRect(M, top, TW, tableH, 9).stroke(C.border);
-  if (isLast && rows.some((x) => x.amountInferred || x.afterDerived)) {
-    r.text("* worked out from the other photos of that top-up (see notes)", M, top + tableH + 12, { size: 6.8, color: C.faint });
-  }
+  const foot = [
+    rows.some((x) => x.amountInferred || (x.afterDerived && !x.afterEstimated)) ? "* worked out from the other photos of that top-up (see notes)" : "",
+    rows.some((x) => x.beforeEstimated || x.afterEstimated || x.usedEstimated)
+      ? "~ estimated: a top-up with only payment files. The kWh used from the top-up before it to the one after stays exact; it's split between the two by time."
+      : "",
+  ].filter(Boolean);
+  if (isLast && foot.length) r.text(foot.join("    "), M, top + tableH + 12, { size: 6.8, color: C.faint, maxW: TW });
 }
 
 function drawReadingsPage(r: Painter, rep: Report, e: Electricity, u: MeterUsage, rows: MeterUsage["photos"], cont: boolean) {
@@ -1130,9 +1162,9 @@ function drawReadingsPage(r: Painter, rep: Report, e: Electricity, u: MeterUsage
   r.text(cont ? `${rep.year} · continued` : `${rep.year}`, M + tw + 7, M + 9, { size: 11, weight: "medium", color: C.faint });
   const note = e.blocked && u.unread
     ? e.blocked
-    : "Times come from each photo's capture date. To correct a reading, use the settings window or edit personal-file-map.readings.json.";
+    : "Times: each photo's capture date (§ the top-up's Payment file). Correct readings in the settings window or personal-file-map.readings.json.";
   r.text(note, M, M + 25, { size: 7.2, color: e.blocked && u.unread ? C.amberText : C.muted, maxW: TW - 260 });
-  const ai = aiTotals(u.photos.map((p) => p.reading));
+  const ai = aiTotals([...u.photos.map((p) => p.reading), ...e.payments.filter((q) => q.meter === u.meter).map((q) => q.reading)]);
   if (ai.photos) {
     const cost = ai.unpriced === ai.photos ? "cost unknown" : `about ${usd(ai.costUsd)}${ai.unpriced ? ` + ${ai.unpriced} unpriced` : ""}`;
     r.text(`AI reading: ${ai.photos} photo${ai.photos === 1 ? "" : "s"} · ${tok(ai.usage.input + ai.usage.cacheRead + ai.usage.cacheWrite)} tokens in · ${tok(ai.usage.output)} out · ${cost}`,
@@ -1162,9 +1194,9 @@ function drawReadingsPage(r: Painter, rep: Report, e: Electricity, u: MeterUsage
   for (const p of rows) {
     const cy = y + READING_ROW_H / 2;
     const rd = p.reading;
-    r.text(`${shortDate(p.takenAt)} ${hhmm(p.takenAt)}${p.dateSource === "month" ? " *" : ""}`, col.taken, cy, {
+    r.text(`${shortDate(p.takenAt)} ${hhmm(p.takenAt)}${p.dateSource === "month" ? " *" : p.dateSource === "payment" ? " §" : ""}`, col.taken, cy, {
       size: 7.5,
-      color: p.dateSource === "photo" ? C.fg2 : C.muted,
+      color: p.dateSource === "photo" || p.dateSource === "payment" ? C.fg2 : C.muted,
     });
     r.text(p.file, col.photo, cy, { size: 7.5, color: C.fg2, maxW: col.kind - col.photo - 12 });
     if (!rd) {

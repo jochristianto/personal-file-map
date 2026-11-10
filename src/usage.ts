@@ -9,7 +9,23 @@ import type { MeterPhoto } from "./meters";
  * a photo without one only tells the month it's from (the file name), not the day. Over a run of top-ups,
  * the kWh in between add up exactly, so the daily rate is measured between the top-ups whose time is known,
  * however many undated top-ups lie in between. Nothing is split into calendar months.
+ *
+ * A top-up with only payment files (no meter photos) is still a top-up: at the payment's date, with the kWh
+ * from its Payment Receipt. Its credit before and after are estimated: the kWh used between the top-ups
+ * around it is still exact, and is split between the two stretches by time.
  */
+
+/** A top-up known only from its Payment / Payment Receipt files (see paymentOnlyTopUps in meters.ts). */
+export interface PaymentTopUp {
+  meter: string;
+  at: Date;
+  /** No date read from its files: placed mid-month. */
+  estimated: boolean;
+  txn: number | null;
+  /** kWh bought, from the receipt; null when not known. */
+  amount: number | null;
+  files: string[];
+}
 
 export interface Reading {
   kwh: number;
@@ -37,6 +53,17 @@ export interface TopUpEvent {
   after: Reading | null;
   /** Credit just after the top-up: the after photo, else before + amount. */
   credit: number | null;
+  /** No meter photos, only payment files (`files`): before and after are estimated. */
+  paymentOnly: boolean;
+  files: string[];
+  /** The kWh added came from the Payment Receipt (no Input photo). */
+  amountFromReceipt: boolean;
+  /** Payment only, and no kWh on its files: `amount` is 0 (or estimated from the usage, see amountInferred). */
+  amountUnknown: boolean;
+  beforeEstimated: boolean;
+  afterEstimated: boolean;
+  /** usedSincePrev rests on an estimated credit (a payment-only top-up on either side). */
+  usedEstimated: boolean;
   /** kWh used from just after the previous top-up to just before this one (null for the first one). */
   usedSincePrev: number | null;
   /** Days since the previous top-up: only when both have a capture time. */
@@ -103,7 +130,8 @@ export interface MeterUsage {
   rate: Rate | null;
   /** Over the latest stretch of at least a week between dated photos, when it's not the same as `rate`. */
   recent: Rate | null;
-  balance: { kwh: number; at: Date; estimated: boolean } | null;
+  /** `kwhEstimated`: worked out for a payment-only top-up after the latest photo. */
+  balance: { kwh: number; at: Date; estimated: boolean; kwhEstimated?: boolean } | null;
   /** When the credit at the latest photo is used up, at the average rate. */
   runsOut: Date | null;
   totalToppedUp: number;
@@ -128,8 +156,8 @@ const TOLERANCE = 0.5; // kWh: rounding and a few minutes of use between photos
 const DAY = 86_400_000;
 const MIN_RECENT_DAYS = 7;
 
-export function meterUsage(meter: string, photos: MeterPhoto[], year: number): MeterUsage {
-  const events = topUpEvents(photos);
+export function meterUsage(meter: string, photos: MeterPhoto[], year: number, paymentOnly: PaymentTopUp[] = []): MeterUsage {
+  const events = topUpEvents(photos, paymentOnly);
   const anchors = placeEvents(events);
 
   // The latest photo of the credit left, plus any top-up photographed after it
@@ -143,6 +171,11 @@ export function meterUsage(meter: string, photos: MeterPhoto[], year: number): M
     // An undated photo of the last top-up: use the top-up's worked-out time rather than the 15th
     const at = estimated && lastEv?.estimated && lastEv.after?.kwh === lastBal.reading!.kwh ? lastEv.at : lastBal.takenAt;
     balance = { kwh: round(lastBal.reading!.kwh + added), at, estimated };
+  }
+  // A payment-only top-up after the latest photo: its estimated credit is the latest known
+  const lastEv = events[events.length - 1];
+  if (lastEv?.paymentOnly && lastEv.credit !== null && (!balance || lastEv.at > balance.at)) {
+    balance = { kwh: lastEv.credit, at: lastEv.at, estimated: lastEv.estimated, kwhEstimated: true };
   }
 
   // Since the last top-up, to the latest photo of the credit left
@@ -172,9 +205,10 @@ export function meterUsage(meter: string, photos: MeterPhoto[], year: number): M
     const b = datedIdx[datedIdx.length - 1];
     avgDays = (events[b].at.getTime() - events[a].at.getTime()) / DAY / (b - a);
   }
-  const befores = events.map((e) => e.before?.kwh).filter((k): k is number => k !== undefined);
+  const befores = events.filter((e) => !e.beforeEstimated).map((e) => e.before?.kwh).filter((k): k is number => k !== undefined);
   const usualBefore = befores.length ? median(befores) : null;
   const inYear = events.filter((e) => e.at.getFullYear() === year);
+  const amounts = events.filter((e) => !e.amountUnknown);
   const when = (r: Rate | null, to: number) =>
     balance && r && r.perDay > 0 ? new Date(balance.at.getTime() + (Math.max(0, balance.kwh - to) / r.perDay) * DAY) : null;
   const next = usualBefore !== null ? when(rate, usualBefore) : null;
@@ -188,7 +222,7 @@ export function meterUsage(meter: string, photos: MeterPhoto[], year: number): M
       count: inYear.length,
       avgDays,
       perMonth: avgDays ? 30.44 / avgDays : null,
-      avgAmount: events.length ? events.reduce((n, e) => n + e.amount, 0) / events.length : null,
+      avgAmount: amounts.length ? amounts.reduce((n, e) => n + e.amount, 0) / amounts.length : null,
       avgUsed: known.length ? known.reduce((n, e) => n + e.usedSincePrev!, 0) / known.length : null,
       usualBefore,
       last,
@@ -203,7 +237,7 @@ export function meterUsage(meter: string, photos: MeterPhoto[], year: number): M
     recent,
     balance,
     runsOut: when(rate, 0),
-    totalToppedUp: round(inYear.reduce((n, e) => n + e.amount, 0)),
+    totalToppedUp: round(inYear.filter((e) => !e.amountUnknown).reduce((n, e) => n + e.amount, 0)),
     unread: photos.filter((p) => !p.reading).length,
     problems: events.filter((e) => e.problem).length,
     estimatedDates: photos.filter((p) => p.dateSource === "month").length,
@@ -215,7 +249,7 @@ export function meterUsage(meter: string, photos: MeterPhoto[], year: number): M
  * "#N" of the month, or at a Before photo after the Input / After of the previous one: photos without a
  * capture time all sit on the 15th, seconds apart, so time alone can't tell #1 from #2.
  */
-function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
+function topUpEvents(photos: MeterPhoto[], paymentOnly: PaymentTopUp[]): TopUpEvent[] {
   const readings = photos.filter((p) => p.reading && kindOf(p) !== "other");
   const clusters: MeterPhoto[][] = [];
   for (const p of readings) {
@@ -243,6 +277,7 @@ function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
     let after: MeterPhoto | undefined;
     let amount: number;
     let inferred = false;
+    let fromReceipt = false;
     if (tops.length > 0) {
       const first = c.indexOf(tops[0]);
       const lastTop = c.indexOf(tops[tops.length - 1]);
@@ -257,14 +292,22 @@ function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
         const rise = kwhOf(bals[i + 1]) - kwhOf(bals[i]);
         if (rise > 0.05 && (best < 0 || rise > kwhOf(bals[best + 1]) - kwhOf(bals[best]))) best = i;
       }
-      if (best < 0) continue; // just balance readings, not a top-up
-      before = bals[best];
-      after = bals[best + 1];
-      amount = kwhOf(after) - kwhOf(before);
-      inferred = true;
+      const bought = c.find((p) => p.bought)?.bought;
+      if (best >= 0) {
+        before = bals[best];
+        after = bals[best + 1];
+        amount = kwhOf(after) - kwhOf(before);
+        inferred = true;
+      } else if (bought) {
+        // No photo of the amount and no rise to work it out from: the kWh on the Payment Receipt
+        before = bals.filter((p) => p.label === "before").pop();
+        after = bals.find((p) => p.label === "after");
+        amount = bought.kwh;
+        fromReceipt = true;
+      } else continue; // just balance readings, not a top-up
     }
     let problem: string | null = null;
-    if (before && after && !inferred && Math.abs(kwhOf(before) + amount - kwhOf(after)) > TOLERANCE) {
+    if (before && after && !inferred && !fromReceipt && Math.abs(kwhOf(before) + amount - kwhOf(after)) > TOLERANCE) {
       problem = `${fmt(kwhOf(before))} + ${fmt(amount)} isn't ${fmt(kwhOf(after))}: check these photos`;
     }
     events.push({
@@ -276,6 +319,13 @@ function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
       amountInferred: inferred,
       after: point(after),
       credit: after ? kwhOf(after) : before ? round(kwhOf(before) + amount) : null,
+      paymentOnly: false,
+      files: [],
+      amountFromReceipt: fromReceipt,
+      amountUnknown: false,
+      beforeEstimated: false,
+      afterEstimated: false,
+      usedEstimated: false,
       usedSincePrev: null,
       sincePrevDays: null,
       perDay: null,
@@ -283,12 +333,23 @@ function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
     });
   }
 
+  for (const t of paymentOnly) {
+    events.push({
+      at: t.at, estimated: t.estimated, txn: t.txn, before: null, amount: t.amount ?? 0, amountInferred: false, after: null, credit: null,
+      paymentOnly: true, files: t.files, amountFromReceipt: t.amount !== null, amountUnknown: t.amount === null,
+      beforeEstimated: false, afterEstimated: false, usedEstimated: false, usedSincePrev: null, sincePrevDays: null, perDay: null, problem: null,
+    });
+  }
+  events.sort((a, b) => a.at.getTime() - b.at.getTime());
+  estimatePaymentOnly(events);
+
   // Between two top-ups: the credit just after the previous one, minus the credit just before this one
   for (let i = 1; i < events.length; i++) {
     const prev = events[i - 1];
     const e = events[i];
     if (prev.credit === null || !e.before) continue;
     const used = prev.credit - e.before.kwh;
+    e.usedEstimated = prev.afterEstimated || e.beforeEstimated;
     if (used < -TOLERANCE) {
       e.problem ??= `Credit went from ${fmt(prev.credit)} to ${fmt(e.before.kwh)} with no top-up in between: a photo may be missing or misread`;
       continue;
@@ -296,6 +357,97 @@ function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
     e.usedSincePrev = round(Math.max(0, used));
   }
   return events;
+}
+
+/** When a reading was taken: the photo's time, or the top-up's. */
+const timeOf = (r: Reading | null, e: TopUpEvent) => (r ?? { at: e.at }).at.getTime();
+
+/**
+ * kWh a day between top-ups with photos on both sides, counting the kWh of payment-only top-ups in between:
+ * a first guess, used only to estimate a payment-only top-up with a known credit on one side only.
+ */
+function roughRate(events: TopUpEvent[]): number | null {
+  let used = 0;
+  let ms = 0;
+  let from = -1;
+  let between = 0;
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    if (e.paymentOnly) {
+      if (e.amountUnknown) from = -1;
+      else between += e.amount;
+      continue;
+    }
+    const a = from >= 0 ? events[from] : null;
+    if (a && a.credit !== null && e.before && !a.estimated && !e.estimated) {
+      const u = a.credit + between - e.before.kwh;
+      const dt = e.before.at.getTime() - timeOf(a.after ?? a.before, a);
+      if (u >= 0 && dt >= DAY) {
+        used += u;
+        ms += dt;
+      }
+    }
+    from = i;
+    between = 0;
+  }
+  return ms > 0 ? used / (ms / DAY) : null;
+}
+
+/**
+ * The credit before and after each payment-only top-up. With a known credit on both sides, the kWh used
+ * from the previous top-up to the next is exact (credit after the previous + kWh bought − credit before the
+ * next); it's split between the two stretches by time. With one side only, at the usual kWh a day. A
+ * payment-only top-up without its kWh gets it as after − before, when both can be estimated.
+ */
+function estimatePaymentOnly(events: TopUpEvent[]) {
+  if (!events.some((e) => e.paymentOnly)) return;
+  const rate = roughRate(events);
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    if (!e.paymentOnly) continue;
+    const prev = i > 0 && events[i - 1].credit !== null ? events[i - 1] : null;
+    // The next top-up with a photo of the credit before it, and the kWh of payment-only top-ups on the way
+    let next: TopUpEvent | null = null;
+    let between = 0;
+    for (let j = i + 1; j < events.length; j++) {
+      const n = events[j];
+      if (!n.paymentOnly) {
+        next = n.before ? n : null;
+        break;
+      }
+      if (n.amountUnknown) break;
+      between += n.amount;
+    }
+    const te = e.at.getTime();
+    const tp = prev ? timeOf(prev.after ?? prev.before, prev) : 0;
+    const tn = next ? timeOf(next.before, next) : 0;
+    const days = (a: number, b: number) => Math.max(0, b - a) / DAY;
+    let before: number | null = null;
+    let after: number | null = null;
+    if (!e.amountUnknown) {
+      if (prev && next && tn > tp) {
+        const total = prev.credit! + e.amount + between - next.before!.kwh;
+        if (total < -TOLERANCE) e.problem = `${fmt(prev.credit!)} + ${fmt(e.amount + between)} bought isn't enough for the ${fmt(next.before!.kwh)} left before the next top-up: check the receipt`;
+        const share = Math.min(1, Math.max(0, (te - tp) / (tn - tp)));
+        before = Math.max(0, prev.credit! - Math.max(0, total) * share);
+      } else if (prev && rate !== null) {
+        before = Math.max(0, prev.credit! - rate * days(tp, te));
+      } else if (next && rate !== null && between === 0) {
+        after = next.before!.kwh + rate * days(te, tn);
+        before = Math.max(0, after - e.amount);
+      }
+      if (before !== null) after = before + e.amount;
+    } else if (rate !== null) {
+      if (prev) before = Math.max(0, prev.credit! - rate * days(tp, te));
+      if (next && between === 0) after = next.before!.kwh + rate * days(te, tn);
+      if (before !== null && after !== null && after > before) {
+        e.amount = round(after - before);
+        e.amountInferred = true;
+      } else after = null; // the credit after is unknown without the kWh bought
+    }
+    if (before !== null) [e.before, e.beforeEstimated] = [{ kwh: round(before), at: e.at }, true];
+    if (after !== null) [e.after, e.afterEstimated, e.credit] = [{ kwh: round(after), at: e.at }, true, round(after)];
+  }
 }
 
 /** A dated point on the running total of kWh used, within a run of top-ups with known usage in between. */
