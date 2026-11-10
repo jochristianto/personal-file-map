@@ -1,10 +1,21 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+// Built into the app, so it still works when only the app is copied somewhere
+import embeddedDefaults from "../../config.default.json";
 
-/** Always lives next to the app. Its "folder" says where the bills are (default: the same folder). */
-export const CONFIG_NAME = "bills-overview.config.json";
+/**
+ * Both live next to the app:
+ *  - config.default.json: shared, generic defaults (committed). Falls back to the built-in copy.
+ *  - config.local.json:   your own settings and bills (created on first run). Overrides the default.
+ */
+export const DEFAULT_CONFIG_NAME = "config.default.json";
+export const LOCAL_CONFIG_NAME = "config.local.json";
+export const CONFIG_FILES = [DEFAULT_CONFIG_NAME, LOCAL_CONFIG_NAME];
+/** Used only if neither config sets "folder". */
 export const DEFAULT_FOLDER = "./";
+/** "folder" written into a freshly created config.local.json: the app's own folder. */
+export const NEW_LOCAL_FOLDER = "./";
 
 /**
  * How often a bill is expected:
@@ -37,44 +48,70 @@ export type Resolved =
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-const HELP = [
-  '"folder": where the bill files are. "./" = the folder this file is in. Also accepts a relative path ("../2026"), an absolute path, or "~/...". The PDF is written there too.',
-  '"bills": which months each bill is expected. Bills not listed (or null) are shown but never flagged.',
-  'Values: "monthly", "quarterly" (Jan/Apr/Jul/Oct), "irregular", null, {"months": [1, 7]}, {"every": 2, "from": 3, "until": 12}.',
-  'A key also covers every bill that starts with it: "Klaska PLN 01" covers "Klaska PLN 01 Photo 1 Before" etc. The longest matching key wins.',
+/** One config file as written: everything optional. */
+export interface PartialConfig {
+  folder?: string;
+  bills?: Record<string, ScheduleSpec>;
+}
+
+const LOCAL_HELP = [
+  "Your settings. Overrides config.default.json (same keys). Created automatically with every bill found set to \"monthly\"; adjust as needed.",
+  '"folder": where the bill files are ("./" = next to the app; relative, absolute or "~/..." paths work).',
+  'Bill values: "monthly", "quarterly", "irregular", null, {"months": [1, 7]}, {"every": 2, "from": 3, "until": 12}. A key also covers bills that start with it; the longest match wins.',
 ];
 
-/** Reads the config next to the app. Returns null if there is none yet. */
-export function readConfig(appDir: string): BillsConfig | null {
+/** Reads config.default.json (or the built-in copy) and config.local.json (null if it doesn't exist yet). */
+export function loadConfigs(appDir: string): { defaults: PartialConfig; local: PartialConfig | null } {
+  const defaults = readConfigFile(appDir, DEFAULT_CONFIG_NAME) ?? validate(embeddedDefaults, DEFAULT_CONFIG_NAME);
+  const local = readConfigFile(appDir, LOCAL_CONFIG_NAME);
+  return { defaults, local };
+}
+
+/** Local wins: its "folder" replaces the default's, its bill keys replace the same keys. */
+export function mergeConfigs(defaults: PartialConfig, local: PartialConfig | null): BillsConfig {
+  return {
+    folder: local?.folder ?? defaults.folder ?? DEFAULT_FOLDER,
+    bills: { ...(defaults.bills ?? {}), ...(local?.bills ?? {}) },
+  };
+}
+
+/** First run: create config.local.json with every bill found set to "monthly". */
+export function writeLocalConfig(appDir: string, folder: string, billNames: string[]): PartialConfig {
+  const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+  const bills = Object.fromEntries([...billNames].sort(collator.compare).map((n) => [n, "monthly" as const]));
+  const config: PartialConfig = { folder, bills };
+  fs.writeFileSync(path.join(appDir, LOCAL_CONFIG_NAME), JSON.stringify({ _help: LOCAL_HELP, ...config }, null, 2) + "\n");
+  return config;
+}
+
+function readConfigFile(appDir: string, name: string): PartialConfig | null {
   let raw: string;
   try {
-    raw = fs.readFileSync(path.join(appDir, CONFIG_NAME), "utf8");
+    raw = fs.readFileSync(path.join(appDir, name), "utf8");
   } catch {
     return null;
   }
-
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw.replace(/^﻿/, ""));
   } catch (err) {
-    throw new Error(`${CONFIG_NAME} isn't valid JSON:\n${(err as Error).message}\n\nFix it (or delete it to get a fresh one) and run again.`);
+    throw new Error(`${name} isn't valid JSON:\n${(err as Error).message}\n\nFix it and run again.`);
   }
-  const bills = (parsed as { bills?: unknown })?.bills;
-  if (!bills || typeof bills !== "object" || Array.isArray(bills)) {
-    throw new Error(`${CONFIG_NAME} needs a "bills" object, e.g. { "bills": { "PLN": "monthly" } }`);
-  }
-  const folder = (parsed as { folder?: unknown }).folder ?? DEFAULT_FOLDER;
-  if (typeof folder !== "string" || !folder.trim()) {
-    throw new Error(`"folder" in ${CONFIG_NAME} must be a path, e.g. "./" or "/Users/me/Bills/2026"`);
-  }
-  return { folder, bills: bills as Record<string, ScheduleSpec> };
+  return validate(parsed, name);
 }
 
-/** First run: write a starter config next to the app, listing every bill found as unscheduled. */
-export function writeStarterConfig(appDir: string, folder: string, billNames: string[]): BillsConfig {
-  const config: BillsConfig = { folder, bills: Object.fromEntries([...billNames].sort().map((n) => [n, null])) };
-  fs.writeFileSync(path.join(appDir, CONFIG_NAME), JSON.stringify({ _help: HELP, ...config }, null, 2) + "\n");
-  return config;
+function validate(parsed: unknown, name: string): PartialConfig {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${name} must be a JSON object, e.g. { "folder": "./", "bills": { "Rent": "monthly" } }`);
+  }
+  const { folder, bills } = parsed as { folder?: unknown; bills?: unknown };
+  if (folder !== undefined && (typeof folder !== "string" || !folder.trim())) {
+    throw new Error(`"folder" in ${name} must be a path, e.g. "./" or "/Users/me/Bills/2026"`);
+  }
+  if (bills !== undefined && (bills === null || typeof bills !== "object" || Array.isArray(bills))) {
+    throw new Error(`"bills" in ${name} must be an object, e.g. { "Rent": "monthly" }`);
+  }
+  return { folder: folder as string | undefined, bills: bills as Record<string, ScheduleSpec> | undefined };
 }
 
 /** "./" → appDir, "../2026" → sibling, "~/Bills" → home, absolute paths as-is. */

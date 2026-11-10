@@ -1,4 +1,4 @@
-import { CONFIG_NAME, matchKey, resolveSchedule, type BillsConfig } from "./config";
+import { LOCAL_CONFIG_NAME, matchKey, resolveSchedule, type BillsConfig } from "./config";
 import type { BillGroup, BillRow, CellState, IgnoredFile, Report, RowStatus, ScanResult } from "./types";
 
 const GENERAL = "General";
@@ -12,7 +12,8 @@ export interface AnalyzeOptions {
 }
 
 /**
- * Nothing is guessed: which months a bill is expected comes only from bills-overview.config.json.
+ * Nothing is guessed: which months a bill is expected comes only from the config
+ * (config.local.json over config.default.json).
  * A scheduled month without a file is "missing" (past) or "due" (current month).
  */
 export function analyze(scan: ScanResult, opts: AnalyzeOptions): Report {
@@ -94,9 +95,9 @@ export function analyze(scan: ScanResult, opts: AnalyzeOptions): Report {
   }
   const unscheduled = rows.filter((r) => r.pattern === "unscheduled");
   if (opts.configCreated) {
-    configNotes.unshift({ file: CONFIG_NAME, reason: "created: set a schedule for each bill" });
+    configNotes.unshift({ file: LOCAL_CONFIG_NAME, reason: "created: every bill set to monthly, adjust as needed" });
   } else if (unscheduled.length > 0) {
-    configNotes.unshift({ file: CONFIG_NAME, reason: `${unscheduled.length} bill${unscheduled.length > 1 ? "s have" : " has"} no schedule` });
+    configNotes.unshift({ file: LOCAL_CONFIG_NAME, reason: `${unscheduled.length} bill${unscheduled.length > 1 ? "s have" : " has"} no schedule` });
   }
 
   const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });

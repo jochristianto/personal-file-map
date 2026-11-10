@@ -63,7 +63,7 @@ export interface Report {
   rows: BillRow[];
   monthTotals: number[]; // bills with a file, per month
   ignored: IgnoredFile[];
-  configNotes: IgnoredFile[]; // problems or reminders about bills-overview.config.json
+  configNotes: IgnoredFile[]; // problems or reminders about the config files
   housekeeping: IgnoredFile[]; // clean-up done this run (renames / conversions)
   stats: {
     scheduledCount: number;

@@ -1,20 +1,21 @@
 import * as fs from "fs/promises";
 import * as path from "path";
-import { CONFIG_NAME } from "./config";
+import { CONFIG_FILES } from "./config";
 import type { BillFile, IgnoredFile, ScanResult } from "./types";
 
 export const ALLOWED_EXTENSIONS = new Set(["pdf", "png", "jpg", "jpeg", "heic"]);
 
-export const outputFileName = (year: number) => `Bills Overview ${year}.pdf`;
+/** The report, written into the bills folder and overwritten on every run. */
+export const OUTPUT_NAME = "bills-overview.output.pdf";
 
-/** Files we never list or warn about: the app itself, our own output, the old PNG output, OS clutter. */
-function isSilentlyIgnored(file: string, year: number, self: string | null): boolean {
+/** Files we never list or warn about: the app itself, configs, our own output, the old PNG output, OS clutter. */
+function isSilentlyIgnored(file: string, _year: number, self: string | null): boolean {
   if (file.startsWith(".") || file.startsWith("~$")) return true;
   const lower = file.toLowerCase();
   if (self && lower === self.toLowerCase()) return true;
-  if (/^bills overview.*\.exe$/.test(lower)) return true; // the Windows build sitting next to the Mac app
-  if (lower === CONFIG_NAME) return true;
-  if (lower === outputFileName(year).toLowerCase()) return true;
+  if (/^bills-overview.*\.exe$/.test(lower)) return true; // the Windows build sitting next to the Mac app
+  if (CONFIG_FILES.includes(lower)) return true;
+  if (lower === OUTPUT_NAME) return true;
   if (/^presence-map-\d{4}\.png$/.test(lower)) return true; // output of the old file-mapper script
   return ["desktop.ini", "thumbs.db", "icon\r"].includes(lower);
 }

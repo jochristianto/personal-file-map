@@ -10,7 +10,8 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.join(here, "dist");
 const releaseDir = path.resolve(here, ".."); // the "bills" folder
-const APP_NAME = "Bills Overview";
+const APP_FILE = "bills-overview"; // bills-overview.app / bills-overview.exe
+const APP_TITLE = "Bills Overview"; // name shown by macOS
 const VERSION = JSON.parse(fs.readFileSync(path.join(here, "package.json"), "utf8")).version;
 
 fs.mkdirSync(dist, { recursive: true });
@@ -47,7 +48,7 @@ const bin = (t) => path.join(binDir, `bills-overview-${t}`);
 console.log("✓ executables");
 
 // 3. Windows: the .exe is the app
-const exeOut = path.join(releaseDir, `${APP_NAME}.exe`);
+const exeOut = path.join(releaseDir, `${APP_FILE}.exe`);
 fs.copyFileSync(bin("win-x64.exe"), exeOut);
 console.log(`✓ ${path.relative(releaseDir, exeOut)}`);
 
@@ -55,7 +56,7 @@ console.log(`✓ ${path.relative(releaseDir, exeOut)}`);
 if (process.platform === "darwin") {
   const icns = makeIcon();
   for (const arch of ["arm64", "x64"]) {
-    const app = path.join(dist, arch === "arm64" ? `${APP_NAME}.app` : `${APP_NAME} (Intel).app`);
+    const app = path.join(dist, arch === "arm64" ? `${APP_FILE}.app` : `${APP_FILE}-intel.app`);
     fs.rmSync(app, { recursive: true, force: true });
     fs.mkdirSync(path.join(app, "Contents/MacOS"), { recursive: true });
     fs.mkdirSync(path.join(app, "Contents/Resources"), { recursive: true });
@@ -70,8 +71,8 @@ if (process.platform === "darwin") {
     }
     console.log(`✓ ${path.relative(here, app)}`);
   }
-  const hostApp = path.join(dist, process.arch === "arm64" ? `${APP_NAME}.app` : `${APP_NAME} (Intel).app`);
-  const appOut = path.join(releaseDir, `${APP_NAME}.app`);
+  const hostApp = path.join(dist, process.arch === "arm64" ? `${APP_FILE}.app` : `${APP_FILE}-intel.app`);
+  const appOut = path.join(releaseDir, `${APP_FILE}.app`);
   fs.rmSync(appOut, { recursive: true, force: true });
   execFileSync("ditto", [hostApp, appOut]); // preserves the code signature
   console.log(`✓ ${path.relative(releaseDir, appOut)}`);
@@ -82,8 +83,8 @@ function infoPlist() {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>${APP_NAME}</string>
-  <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
+  <key>CFBundleName</key><string>${APP_TITLE}</string>
+  <key>CFBundleDisplayName</key><string>${APP_TITLE}</string>
   <key>CFBundleIdentifier</key><string>id.becomeone.bills-overview</string>
   <key>CFBundleExecutable</key><string>bills-overview</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>

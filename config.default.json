@@ -1,0 +1,11 @@
+{
+  "_help": [
+    "Shared defaults. Don't put your own bills here: the app creates config.local.json next to it on first run (\"folder\": \"./\", every bill found set to \"monthly\"), and that file overrides this one.",
+    "\"folder\": where the bill files are, used when config.local.json doesn't set one. \"./\" = the folder the app is in. Also accepts a relative path (\"./samples\", \"../2026\"), an absolute path, or \"~/...\". The PDF (bills-overview.output.pdf) is written there too.",
+    "\"bills\": which months each bill is expected. Bills not listed (or null) are shown but never flagged.",
+    "Values: \"monthly\", \"quarterly\" (Jan/Apr/Jul/Oct), \"irregular\", null, {\"months\": [1, 7]}, {\"every\": 2, \"from\": 3, \"until\": 12}.",
+    "A key also covers every bill that starts with it: \"Meter 01\" covers \"Meter 01 Photo 1 Before\" etc. The longest matching key wins. Keys in config.local.json replace the same keys here."
+  ],
+  "folder": "./samples",
+  "bills": {}
+}
