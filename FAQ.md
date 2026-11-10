@@ -94,12 +94,12 @@ One `#` per top-up, then what the photo shows:
 202610 Home Meter #1 Before.jpg     the credit left, just before topping up
 202610 Home Meter #1 Input.jpg      the kWh just added (meter screen after the token, or the receipt)
 202610 Home Meter #1 After.jpg      the credit right after topping up
-202610 Home Meter #1 Payment.jpg    optional: the bank transfer (for the date)
+202610 Home Meter #1 Payment.jpg    optional: the bank transfer (for what you paid, and the date)
 202610 Home Meter #1 Payment Receipt.jpg   optional: the token receipt (for the kWh bought)
 202610 Home Meter #2 Before.jpg     a second top-up the same month
 ```
 
-**Only photos named `Before`, `Input` or `After` are meter photos.** That word also tells the app what the photo shows: `Before` and `After` are the credit left, `Input` is the kWh just added. Two more files of a top-up can help, and are only read when the photos don't tell: `… Payment` (the bank transfer) for the date, and `… Payment Receipt` (the token receipt) for the kWh bought. Neither is a reading. Any other file of the meter's bill, such as a receipt PDF, is left out: it isn't listed under *Meter readings*, isn't sent to the AI reader and isn't counted.
+**Only photos named `Before`, `Input` or `After` are meter photos.** That word also tells the app what the photo shows: `Before` and `After` are the credit left, `Input` is the kWh just added. Two more files of a top-up can help: `… Payment` (the bank transfer) is always read, for what you paid (the *Spent* figures in the report) and for the date when the photos have none; `… Payment Receipt` (the token receipt) is read only when it's needed, for the kWh bought when there's no `Input` photo, or for what you paid when there's no `Payment`. Neither is a reading. Any other file of the meter's bill, such as a receipt PDF, is left out: it isn't listed under *Meter readings*, isn't sent to the AI reader and isn't counted.
 
 Keep the original photos: the time each one was taken is read from the photo itself, and screenshots or copies sent through a chat app lose it. If they have, see [My meter photos have no date](#my-meter-photos-have-no-date-sent-through-whatsapp-or-screenshots). The settings window shows these example names for the current month and your meter under **Electricity meters**. See [Electricity meters](README.md#electricity-meters) in the README.
 
@@ -179,7 +179,7 @@ About $0.0003 a photo with the suggested `claude-haiku-5-5`. Each photo is read 
 
 ### Which photos are sent to the AI?
 
-Only photos of ⚡ bills whose names contain `Before`, `Input` or `After`, each once, scaled down. The only additions are a top-up's `Payment` and `Payment Receipt` files, each once, and only when its photos don't give what's needed: the `Payment` file when the photos have no capture date (or there are none), the `Payment Receipt` when there's no `Input` photo and the kWh bought can't be worked out from `Before` and `After`. Nothing else from the folder is ever sent: not other bills, not PDFs, not other files of the meter's bill (`Receipt`, `Check`, …). Every request is recorded in the `logs` folder next to the app, so you can see exactly which photos went out.
+Only photos of ⚡ bills whose names contain `Before`, `Input` or `After`, each once, scaled down. The only additions are a top-up's `Payment` and `Payment Receipt` files, each once: the `Payment` file always, for the amount paid (and the date); the `Payment Receipt` only when there's no `Payment` file, or when there's no `Input` photo and the kWh bought can't be worked out from `Before` and `After`. Nothing else from the folder is ever sent: not other bills, not PDFs, not other files of the meter's bill (`Receipt`, `Check`, …). Every request is recorded in the `logs` folder next to the app, so you can see exactly which photos went out.
 
 ### A meter photo isn't listed under *Meter readings*
 

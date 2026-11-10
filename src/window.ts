@@ -384,10 +384,13 @@ function forWindow(e: Electricity) {
       rateDays: u.rate?.days ?? null,
       nextTopUp: u.frequency.next?.toISOString() ?? null,
       totalToppedUp: u.totalToppedUp,
+      spent: u.spent,
+      spentUnknown: u.spentUnknown,
+      topUps: u.frequency.count,
       balance: u.balance && { kwh: u.balance.kwh, at: u.balance.at.toISOString() },
       runsOut: u.runsOut?.toISOString() ?? null,
       unread: u.unread,
-      /** Payment files to read because a photo of their top-up has no capture date. */
+      /** Payment files still to read: for the amount paid, a date or the kWh bought. */
       unreadPayments: e.paymentsUnread.filter((q) => q.meter === u.meter).length,
       ai: aiTotals([...u.photos.map((p) => p.reading), ...e.payments.filter((q) => q.meter === u.meter).map((q) => q.reading)]),
       problems: u.events.filter((e) => e.problem).map((e) => ({ at: e.at.toISOString(), estimated: e.estimated, problem: e.problem })),

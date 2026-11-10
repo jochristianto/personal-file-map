@@ -39,11 +39,12 @@
     font: 14px/1.45 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased;
     padding-bottom: 104px;
+    font-kerning: none; /* Inter 4.001 kerns a digit into the period after it: "337.1" reads as "3371" */
   }
   main { padding: 24px 28px 0; } /* full window width */
   .layout { display: block; }
   .main-col { min-width: 0; }
-  /* Header buttons that open the bills (full-page dialog) and the folder & meters (sheet on the right) */
+  /* Header buttons that open the bills (large dialog) and the folder & meters (sheet on the right) */
   .header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .header-actions button { display: inline-flex; align-items: center; gap: 7px; }
   .header-actions button svg { width: 15px; height: 15px; }
@@ -59,14 +60,16 @@
   dialog.sheet .modal-head { padding: 16px 16px 8px 20px; align-items: center; }
   dialog.sheet .modal-body { padding: 8px 16px 16px; flex: 1; }
   dialog.sheet .card:last-child { margin-bottom: 0; }
-  /* Bills: a full-page dialog */
+  /* Bills: a dialog over the dimmed page, 1180px wide at most and as tall as its bills. Held at the top so it
+     grows downward when bills are filtered or added, instead of jumping around the middle. */
   dialog.page {
-    margin: 0; width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh; padding: 0; border: 0;
-    background: var(--bg); color: var(--fg);
+    width: min(1180px, calc(100vw - 64px)); height: auto; max-width: none; max-height: calc(100vh - 64px); bottom: auto; margin: 32px auto 0; padding: 0; /* bottom: auto, or it stretches to the window's bottom */
+    border: 1px solid var(--border); border-radius: 14px; background: var(--bg); color: var(--fg); box-shadow: 0 24px 64px rgba(0,0,0,.25);
   }
+  dialog.page::backdrop { background: rgba(9, 9, 11, .45); backdrop-filter: blur(2px); }
   dialog.page[open] { display: flex; flex-direction: column; animation: pop .14s ease-out; }
-  dialog.page .modal-head { width: 100%; max-width: 1180px; margin: 0 auto; padding: 20px 24px 12px; align-items: center; }
-  dialog.page .modal-body { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 24px 24px; flex: 1; }
+  dialog.page .modal-head { padding: 16px 20px 12px; align-items: center; }
+  dialog.page .modal-body { padding: 0 20px 20px; }
   dialog.page .card.bills { margin-bottom: 0; }
   @media (prefers-reduced-motion: reduce) { dialog.sheet[open], dialog.page[open] { animation: none; } }
   .bills { container-type: inline-size; } /* bill rows adapt to the column, not the window */
@@ -252,10 +255,11 @@
   table.readings th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--bg); padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.readings td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
   table.readings tr:last-child td { border-bottom: 0; }
-  /* File takes the room that's left (max-width: 0 lets it shrink and ellipsize instead of pushing the table wider) */
+  table.readings tbody tr:nth-child(even) td { background: var(--bg); }
+  /* File takes the room that's left (max-width: 0 lets it shrink and wrap instead of pushing the table wider) */
   table.readings th.file { width: 100%; }
   table.readings td.file { max-width: 0; min-width: 160px; }
-  table.readings button.file-link { display: block; max-width: 100%; height: auto; padding: 2px 0; border: 0; background: none; color: var(--fg); font: inherit; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  table.readings button.file-link { display: block; max-width: 100%; height: auto; padding: 2px 0; border: 0; background: none; color: var(--fg); font: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; cursor: pointer; }
   table.readings button.file-link:hover { background: none; text-decoration: underline; }
   table.readings td.when { white-space: nowrap; color: var(--fg2); }
   table.readings td.when.estimated { color: var(--amber); }
@@ -263,7 +267,6 @@
   table.readings td.when.estimated sup { color: var(--amber); }
   table.readings td.by { color: var(--muted); font-size: 12px; min-width: 150px; max-width: 240px; line-height: 1.35; }
   table.readings td.by small, table.readings td.ai small { display: block; font-size: 11.5px; color: var(--faint); }
-  table.readings td.by small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } /* the whole note on hover */
   .date-notes { margin: 8px 2px 0; font-size: 12px; color: var(--muted); display: grid; gap: 3px; }
   .date-notes .mark { display: inline-block; min-width: 14px; font-weight: 600; color: var(--faint); }
   .date-notes .estimated, .date-notes .estimated .mark { color: var(--amber); }
@@ -293,6 +296,7 @@
   @media (max-width: 900px) {
     main { padding: 20px 16px 0; }
     .footer-in { padding: 12px 16px; }
+    dialog.page { width: calc(100vw - 24px); max-height: calc(100vh - 24px); margin-top: 12px; }
     dialog.page .modal-head { padding: 16px 16px 10px; }
     dialog.page .modal-body { padding: 0 16px 16px; }
   }
@@ -405,9 +409,9 @@
           </span>
         </div>
         <p class="help">Reads the kWh on photos of a prepaid electricity meter, so the report shows how much you use. Turn on <span class="zap-inline" id="zapHelp"></span> next to the meter's bill (e.g. <code>Home Meter</code>) to mark its photos.</p>
-        <div class="note">Name the photos of each top-up like this. Photos named <strong>Before</strong>, <strong>Input</strong> or <strong>After</strong> are read. A <strong>Payment</strong> and a <strong>Payment Receipt</strong> are only read when the photos don't tell: the payment for the date when the photos have none, the receipt for the kWh bought when there's no Input photo. Other files of the meter's bill are left out.</div>
+        <div class="note">Name the photos of each top-up like this. Photos named <strong>Before</strong>, <strong>Input</strong> or <strong>After</strong> are read. A <strong>Payment</strong> is always read, for what you paid (and the date, when the photos have none). A <strong>Payment Receipt</strong> is read when it's needed: for the kWh bought when there's no Input photo, or for what you paid when there's no Payment. Other files of the meter's bill are left out.</div>
         <ul class="examples" id="meterExamples"></ul>
-        <p class="help" id="meterNaming">The month (<code>YYYYMM</code>), the meter's name, <code>#1</code> for the first top-up that month (<code>#2</code> for a second one), then <code>Before</code>, <code>Input</code> or <code>After</code>. Use the original photos, not screenshots of them: the time each photo was taken is read from the file. For photos that lost it (sent through a chat app), add the top-up's <code>Payment</code> screenshot: its date is used, since the top-up is the same day. A top-up with only <code>Payment</code> files still counts; its credit before and after are estimated.</p>
+        <p class="help" id="meterNaming">The month (<code>YYYYMM</code>), the meter's name, <code>#1</code> for the first top-up that month (<code>#2</code> for a second one), then <code>Before</code>, <code>Input</code> or <code>After</code>. Use the original photos, not screenshots of them: the time each photo was taken is read from the file. For photos that lost it (sent through a chat app), add the top-up's <code>Payment</code> screenshot: its date is used, since the top-up is the same day. Add the <code>Payment</code> of every top-up to see what you spent on electricity. A top-up with only <code>Payment</code> files still counts; its credit before and after are estimated.</p>
         <div class="field">
           <label for="reader">AI reader</label>
           <select id="reader"></select>
@@ -511,10 +515,19 @@ const ZAP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 
 // ── API ────────────────────────────────────────────────────────────────────
 async function api(path, body) {
-  const res = await fetch("api/" + path, body === undefined ? {} : {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(await res.text());
+  let res;
+  try {
+    res = await fetch("api/" + path, body === undefined ? {} : {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error("The app isn't running any more. Open it again (double-click it), then reload this window.");
+  }
+  if (!res.ok) {
+    // The app answers with a short plain-text message; anything else (an HTML error page) is shown as its status only
+    const text = (res.headers.get("Content-Type") || "").startsWith("text/plain") ? (await res.text()).trim() : "";
+    throw new Error(text || `The app didn't answer this request (HTTP ${res.status}). Is this window open from the app?`);
+  }
   return res.json();
 }
 
@@ -762,8 +775,8 @@ function renderHeader() {
   chip.className = "chip " + (state.configExists && !state.configError ? "green" : "amber");
 }
 
-// ── Bills (full-page dialog) and Folder & meters (sheet on the right) ───────
-// Both are modal dialogs: Esc closes them; the sheet also closes on a click outside it.
+// ── Bills (large dialog) and Folder & meters (sheet on the right) ──────────
+// Both are modal dialogs: Esc or a click outside closes them.
 function openSettings() { if (!$("settingsSheet").open) $("settingsSheet").showModal(); }
 function openBills() { if (!$("billsDialog").open) $("billsDialog").showModal(); }
 $("openSettings").addEventListener("click", openSettings);
@@ -773,6 +786,7 @@ $("settingsSheet").addEventListener("click", (e) => { if (e.target === $("settin
 $("openBills").addEventListener("click", openBills);
 $("startBills").addEventListener("click", openBills);
 $("closeBills").addEventListener("click", () => $("billsDialog").close());
+$("billsDialog").addEventListener("click", (e) => { if (e.target === $("billsDialog")) $("billsDialog").close(); });
 
 function renderFolderInfo() {
   const info = $("folderInfo");
@@ -1144,6 +1158,12 @@ async function editReading(file, kind, kwhText, input) {
 }
 
 const fmtKwh = (n, d = 1) => n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+/** "IDR 250,000" (no currency read: just the number); cents only when there are any, unless `d` says. Same as the report. */
+const fmtMoney = (n, currency, d) => {
+  const digits = d ?? (Number.isInteger(Math.round(n * 100) / 100) ? 0 : 2);
+  const s = n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return currency ? `${currency} ${s}` : s;
+};
 const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 const fmtWhen = (iso) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
@@ -1227,6 +1247,14 @@ function renderMeters() {
     if (m.perDay !== null) stats.push(el("span", {}, " · ", el("strong", {}, `${fmtKwh(m.perDay)} kWh`), ` a day (over ${Math.round(m.rateDays)} days)`));
     if (m.balance) stats.push(el("span", {}, ` · ${fmtKwh(m.balance.kwh)} kWh left on ${fmtDay(m.balance.at)}` + (m.nextTopUp ? `, next top-up around ${fmtDay(m.nextTopUp)}` : m.runsOut ? `, lasts until about ${fmtDay(m.runsOut)}` : "")));
     if (stats.length === 0) stats.push(el("span", {}, "Usage shows once there are two top-ups with before and after photos."));
+    if (m.spent.length) {
+      const [s, ...more] = m.spent;
+      const paid = m.spent.reduce((n, o) => n + o.topUps, 0);
+      stats.push(el("div", {}, el("strong", {}, fmtMoney(s.amount, s.currency)), ...more.map((o) => ` + ${fmtMoney(o.amount, o.currency)}`),
+        ` spent on ${paid} top-up${paid === 1 ? "" : "s"} this year`,
+        !more.length && s.perKwh !== null ? ` · ${fmtMoney(s.perKwh, s.currency, 0)} a kWh` : "",
+        m.spentUnknown ? ` · ${m.spentUnknown} more without an amount (no Payment file, or not read yet)` : ""));
+    } else if (m.topUps) stats.push(el("div", {}, "Add the Payment file of each top-up to see what you spent."));
     if (m.ai.photos) stats.push(el("div", { title: "Tokens and cost of every AI reading of this meter's photos so far (prices as of the app's release)" }, `AI: ${m.ai.photos} photo${m.ai.photos === 1 ? "" : "s"} · ${aiSummary(m.ai)}`));
 
     const body = m.photos.map((ph) => {

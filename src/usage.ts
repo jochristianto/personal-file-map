@@ -15,6 +15,13 @@ import type { MeterPhoto } from "./meters";
  * around it is still exact, and is split between the two stretches by time.
  */
 
+/** What a top-up cost, as read from its Payment file (or its receipt). `currency` is "" when none was shown. */
+export interface Paid {
+  amount: number;
+  currency: string;
+  file: string;
+}
+
 /** A top-up known only from its Payment / Payment Receipt files (see paymentOnlyTopUps in meters.ts). */
 export interface PaymentTopUp {
   meter: string;
@@ -24,6 +31,7 @@ export interface PaymentTopUp {
   txn: number | null;
   /** kWh bought, from the receipt; null when not known. */
   amount: number | null;
+  paid: Paid | null;
   files: string[];
 }
 
@@ -53,6 +61,8 @@ export interface TopUpEvent {
   after: Reading | null;
   /** Credit just after the top-up: the after photo, else before + amount. */
   credit: number | null;
+  /** What it cost, from its Payment file; null when there's none or it isn't read yet. */
+  paid: Paid | null;
   /** No meter photos, only payment files (`files`): before and after are estimated. */
   paymentOnly: boolean;
   files: string[];
@@ -108,6 +118,15 @@ export interface TopUpFrequency {
   nextRecent: Date | null;
 }
 
+/** Money spent on the year's top-ups in one currency (normally the only one). */
+export interface Spending {
+  currency: string;
+  amount: number;
+  topUps: number;
+  /** Price per kWh, over the top-ups whose kWh bought is known too. */
+  perKwh: number | null;
+}
+
 /** A moment that may only be known to the month. */
 export interface Point {
   at: Date;
@@ -135,6 +154,10 @@ export interface MeterUsage {
   /** When the credit at the latest photo is used up, at the average rate. */
   runsOut: Date | null;
   totalToppedUp: number;
+  /** Spent on the year's top-ups, per currency, most spent first; empty when no amount is known. */
+  spent: Spending[];
+  /** The year's top-ups without an amount paid (no Payment file, or not read yet). */
+  spentUnknown: number;
   unread: number;
   problems: number;
   estimatedDates: number;
@@ -238,10 +261,31 @@ export function meterUsage(meter: string, photos: MeterPhoto[], year: number, pa
     balance,
     runsOut: when(rate, 0),
     totalToppedUp: round(inYear.filter((e) => !e.amountUnknown).reduce((n, e) => n + e.amount, 0)),
+    spent: spending(inYear),
+    spentUnknown: inYear.filter((e) => !e.paid).length,
     unread: photos.filter((p) => !p.reading).length,
     problems: events.filter((e) => e.problem).length,
     estimatedDates: photos.filter((p) => p.dateSource === "month").length,
   };
+}
+
+/** The amounts paid for these top-ups, added up per currency. */
+function spending(events: TopUpEvent[]): Spending[] {
+  const by = new Map<string, { amount: number; topUps: number; priced: number; kwh: number }>();
+  for (const e of events) {
+    if (!e.paid) continue;
+    const t = by.get(e.paid.currency) ?? { amount: 0, topUps: 0, priced: 0, kwh: 0 };
+    t.amount += e.paid.amount;
+    t.topUps++;
+    if (!e.amountUnknown && e.amount > 0) {
+      t.priced += e.paid.amount;
+      t.kwh += e.amount;
+    }
+    by.set(e.paid.currency, t);
+  }
+  return [...by]
+    .map(([currency, t]) => ({ currency, amount: Math.round(t.amount * 100) / 100, topUps: t.topUps, perKwh: t.kwh > 0 ? t.priced / t.kwh : null }))
+    .sort((a, b) => b.amount - a.amount);
 }
 
 /**
@@ -314,6 +358,7 @@ function topUpEvents(photos: MeterPhoto[], paymentOnly: PaymentTopUp[]): TopUpEv
       at: tops[0]?.takenAt ?? after?.takenAt ?? before!.takenAt,
       estimated: c.some((p) => p.dateSource === "month"),
       txn: c[0].txn,
+      paid: c.find((p) => p.paid)?.paid ?? null,
       before: point(before),
       amount: round(amount),
       amountInferred: inferred,
@@ -335,7 +380,7 @@ function topUpEvents(photos: MeterPhoto[], paymentOnly: PaymentTopUp[]): TopUpEv
 
   for (const t of paymentOnly) {
     events.push({
-      at: t.at, estimated: t.estimated, txn: t.txn, before: null, amount: t.amount ?? 0, amountInferred: false, after: null, credit: null,
+      at: t.at, estimated: t.estimated, txn: t.txn, paid: t.paid, before: null, amount: t.amount ?? 0, amountInferred: false, after: null, credit: null,
       paymentOnly: true, files: t.files, amountFromReceipt: t.amount !== null, amountUnknown: t.amount === null,
       beforeEstimated: false, afterEstimated: false, usedEstimated: false, usedSincePrev: null, sincePrevDays: null, perDay: null, problem: null,
     });

@@ -20,7 +20,7 @@ import {
   type Usage,
 } from "./reader";
 import type { BillFile } from "./types";
-import { meterUsage, type MeterUsage, type PaymentTopUp } from "./usage";
+import { meterUsage, type MeterUsage, type Paid, type PaymentTopUp } from "./usage";
 
 /**
  * Electricity meters: bills whose photos show a prepaid kWh meter. Each photo's kWh is read once (by the
@@ -127,19 +127,10 @@ export function aiTotals(readings: ({ usage?: Usage | null; costUsd?: number | n
   return t;
 }
 
-function addTotals(a: AiTotals, b: AiTotals): AiTotals {
-  return {
-    photos: a.photos + b.photos,
-    usage: { input: a.usage.input + b.usage.input, output: a.usage.output + b.usage.output, cacheRead: a.usage.cacheRead + b.usage.cacheRead, cacheWrite: a.usage.cacheWrite + b.usage.cacheWrite },
-    costUsd: a.costUsd + b.costUsd,
-    unpriced: a.unpriced + b.unpriced,
-  };
-}
-
 interface ReadingsFile {
   _help?: string[];
   photos: Record<string, StoredReading>;
-  /** Payment files read for their date, by file name. */
+  /** Payment files read for the amount paid and their date, by file name. */
   payments?: Record<string, StoredPayment>;
 }
 
@@ -147,7 +138,7 @@ const HELP = [
   "kWh that Personal File Map read from your electricity meter photos, one entry per photo, so no photo is sent to the AI reader twice.",
   "To correct one, change \"kwh\" and/or \"kind\" (\"balance\" = credit left on the meter, \"topup\" = kWh just added, \"other\" = ignore) and set \"edited\": true. You can also do this in the settings window.",
   "Delete an entry to have that photo read again.",
-  "\"payments\": the date read from a top-up's Payment file (\"paidAt\", local time, YYYY-MM-DDTHH:MM:SS), only for top-ups whose photos have no capture date; those photos get that date. To correct it, change \"paidAt\" and set \"edited\": true.",
+  "\"payments\": what was read from each top-up's Payment file (and from a Payment Receipt when needed): the amount paid (\"amount\", \"currency\"), the kWh bought, and the date (\"paidAt\", local time, YYYY-MM-DDTHH:MM:SS), which photos without a capture date get. To correct one, change it and set \"edited\": true.",
 ];
 
 export class ReadingStore {
@@ -254,6 +245,8 @@ export interface MeterPhoto {
   paymentFile: string | null;
   /** The kWh bought, from the top-up's Payment Receipt: the amount when there's no Input photo. */
   bought: { kwh: number; file: string } | null;
+  /** What the top-up cost, from its Payment file (or its receipt); null when not known. */
+  paid: Paid | null;
   /** "Before" / "Input" / "After" in the file name: what the photo shows (credit left, kWh added, credit left). */
   label: MeterLabel;
   /** Which top-up of the month ("#2" → 2), or null without a "#N". */
@@ -274,8 +267,9 @@ export function meterLabel(fullName: string): MeterLabel | null {
 }
 
 /**
- * A top-up's payment files: "… Payment" (the bank transfer, read for its date) and "… Payment Receipt" (the
- * token receipt, read for the kWh bought). Only read when the top-up's photos don't already tell.
+ * A top-up's payment files: "… Payment" (the bank transfer, always read: for the amount paid, and the date
+ * when the photos have none) and "… Payment Receipt" (the token receipt, read for the kWh bought when the
+ * photos don't tell, or for the amount and date when there's no Payment file).
  */
 export interface PaymentFile {
   meter: string;
@@ -336,7 +330,7 @@ export async function meterFiles(dir: string, year: number, files: BillFile[], m
       dateSource = inMonth ? "file" : "month";
     }
     const own = { at: takenAt, source: dateSource as MeterPhoto["own"]["source"] };
-    out.push({ meter, file: f.file, month: f.month, ext: f.ext, sha1, takenAt, dateSource, own, paymentFile: null, bought: null,
+    out.push({ meter, file: f.file, month: f.month, ext: f.ext, sha1, takenAt, dateSource, own, paymentFile: null, bought: null, paid: null,
       label, txn: f.txn, reading: store.get(f.file, sha1) });
   }
   return { photos: datePhotos(out, payments, year), payments };
@@ -399,25 +393,27 @@ function topUpKwh(g: TopUpFiles): { kwh: number; file: string } | null {
   return null;
 }
 
-/** The top-up needs a date from its payment: it has no photos, or a photo without a capture date. */
-const needsDate = (g: TopUpFiles) => g.photos.length === 0 || g.photos.some((p) => p.own.source !== "photo");
+/** What the top-up cost, as shown on its Payment file (or, failing that, on the receipt). */
+function topUpPaid(g: TopUpFiles): Paid | null {
+  for (const q of [g.payment, g.receipt]) if (q?.reading?.amount) return { amount: q.reading.amount, currency: q.reading.currency, file: q.file };
+  return null;
+}
+
 /** The top-up needs the kWh bought: no Input photo, and no Before and After photos to work it out from. */
 const needsKwh = (g: TopUpFiles) =>
   !g.photos.some((p) => p.label === "input") && !(g.photos.some((p) => p.label === "before") && g.photos.some((p) => p.label === "after"));
 
 /**
- * Payment files to read now, only where the photos don't tell: the receipt for the kWh bought (or for the
- * date when there's no Payment file), the Payment file for the date. A Payment file waits while its
- * receipt is being read, since the receipt usually shows the date too.
+ * Payment files to read now. Every Payment file, for the amount paid (and the date when the photos have
+ * none). A receipt only where it's needed: for the kWh bought when the photos don't tell, or for the amount
+ * and date when the top-up has no Payment file.
  */
-export function paymentsToRead(photos: MeterPhoto[], payments: PaymentFile[], year: number): PaymentFile[] {
+export function paymentsToRead(photos: MeterPhoto[], payments: PaymentFile[]): PaymentFile[] {
   const out: PaymentFile[] = [];
   for (const g of topUpFiles(photos, payments)) {
     const r = g.receipt;
-    const receiptNeeded = r !== null && ((needsKwh(g) && !g.payment?.reading?.kwh) || (needsDate(g) && !g.payment));
-    if (r && receiptNeeded && !r.reading) out.push(r);
-    const p = g.payment;
-    if (p && !p.reading && needsDate(g) && !paymentDate(r, year) && !(r && receiptNeeded && !r.reading)) out.push(p);
+    if (r && !r.reading && (!g.payment || (needsKwh(g) && !g.payment.reading?.kwh))) out.push(r);
+    if (g.payment && !g.payment.reading) out.push(g.payment);
   }
   return out;
 }
@@ -432,11 +428,13 @@ export function datePhotos(photos: MeterPhoto[], payments: PaymentFile[], year: 
   for (const g of topUpFiles(photos, payments)) {
     const date = topUpDate(g, year);
     const bought = topUpKwh(g);
+    const paid = topUpPaid(g);
     for (const p of g.photos) {
       p.takenAt = p.own.at;
       p.dateSource = p.own.source;
       p.paymentFile = null;
       p.bought = bought;
+      p.paid = paid;
       if (p.own.source === "photo" || !date) continue;
       p.takenAt = new Date(date.at.getTime() + (p.label === "before" ? -1 : LABEL_ORDER[p.label]) * 60_000);
       p.dateSource = "payment";
@@ -460,6 +458,7 @@ export function paymentOnlyTopUps(photos: MeterPhoto[], payments: PaymentFile[],
         estimated: !date,
         txn: g.txn,
         amount: bought?.kwh ?? null,
+        paid: topUpPaid(g),
         files: [g.payment?.file, g.receipt?.file].filter((f): f is string => Boolean(f)),
       };
     });
@@ -561,7 +560,7 @@ export interface Electricity {
   usages: MeterUsage[];
   /** The meters' Payment files, read or not. */
   payments: PaymentFile[];
-  /** Payment files still to read for a top-up whose photos have no capture date. */
+  /** Payment files still to read: for the amount paid, a date, or the kWh bought. */
   paymentsUnread: PaymentFile[];
   /** "Claude (Anthropic) · claude-haiku-5-5", or null when the reader is off. */
   reader: string | null;
@@ -586,7 +585,7 @@ export async function electricity(
   const provider = settings.reader === "off" ? null : settings.reader;
   const model = provider ? modelFor(settings, provider) : "";
   const label = provider ? `${PROVIDERS.find((p) => p.id === provider)!.label} · ${model}` : null;
-  const unread = photos.filter((p) => !p.reading).length + paymentsToRead(photos, payments, year).length;
+  const unread = photos.filter((p) => !p.reading).length + paymentsToRead(photos, payments).length;
 
   let read: ReadResult | null = null;
   let blocked: string | null = null;
@@ -595,14 +594,7 @@ export async function electricity(
     if (!provider) blocked = "No AI reader is chosen in the settings window, so new meter photos aren't read.";
     else if (!key) blocked = `No API key for ${PROVIDERS.find((p) => p.id === provider)!.label} is saved, so new meter photos aren't read.`;
     else if (opts.read) {
-      read = await readNewPhotos(dir, photos, paymentsToRead(photos, payments, year), store, provider, model, key, opts.logDir ?? null, opts.onProgress);
-      // A receipt without a date: its Payment file is read now
-      datePhotos(photos, payments, year);
-      const more = paymentsToRead(photos, payments, year);
-      if (more.length && !read.stopped) {
-        const again = await readNewPhotos(dir, photos, more, store, provider, model, key, opts.logDir ?? null, opts.onProgress);
-        read = { read: read.read + again.read, failed: [...read.failed, ...again.failed], stopped: again.stopped, totals: addTotals(read.totals, again.totals) };
-      }
+      read = await readNewPhotos(dir, photos, paymentsToRead(photos, payments), store, provider, model, key, opts.logDir ?? null, opts.onProgress);
     }
   }
   datePhotos(photos, payments, year); // a payment just read dates the photos of its top-up
@@ -611,5 +603,5 @@ export async function electricity(
   const usages = settings.bills
     .map((meter) => meterUsage(meter, photos.filter((p) => p.meter === meter), year, paymentOnly.filter((t) => t.meter === meter)))
     .filter((u) => u.photos.length > 0 || u.events.length > 0);
-  return { usages, payments, paymentsUnread: paymentsToRead(photos, payments, year), reader: label, read, blocked };
+  return { usages, payments, paymentsUnread: paymentsToRead(photos, payments), reader: label, read, blocked };
 }

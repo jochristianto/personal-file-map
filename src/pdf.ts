@@ -6,7 +6,7 @@ import interBold from "@fontsource/inter/files/inter-latin-700-normal.woff";
 import { usd } from "./ailog";
 import { aiTotals, type Electricity } from "./meters";
 import type { BillRow, CellState, Report } from "./types";
-import { kindOf, type MeterUsage, type TopUpEvent } from "./usage";
+import { kindOf, type MeterUsage, type Paid, type TopUpEvent } from "./usage";
 
 // ── Design tokens (shadcn/ui "zinc" theme) ───────────────────────────────────
 const C = {
@@ -64,6 +64,7 @@ const ICONS: Record<string, string[]> = {
   bars: ["M3 3v16a2 2 0 0 0 2 2h16", "M18 17V9", "M13 17V5", "M8 17v-3"],
   zap: ["M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"],
   wallet: ["M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1", "M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"],
+  banknote: ["M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z", "M12 10a2 2 0 1 0 0 4 2 2 0 1 0 0-4z", "M6 12h.01", "M18 12h.01"],
   plus: ["M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20z", "M8 12h8", "M12 8v8"],
   broom: ["M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"],
 };
@@ -107,11 +108,46 @@ export async function renderPdf(report: Report): Promise<Buffer> {
 }
 
 // ── Painter: thin helpers over pdfkit ────────────────────────────────────────
+// Inter 4.001 kerns a digit into the period or comma after it ("7." by half a character, so "337.1" reads
+// as "3371"). Its default spacing is made to work without kerning, so it's off everywhere.
+const NO_KERN = { kern: false } as unknown as PDFKit.Mixins.OpenTypeFeatures[];
+
 class Painter {
   constructor(readonly doc: PDFKit.PDFDocument) {}
 
   width(s: string, size: number, weight: Weight = "regular", spacing = 0): number {
-    return this.doc.font(weight).fontSize(size).widthOfString(s, { characterSpacing: spacing });
+    return this.doc.font(weight).fontSize(size).widthOfString(s, { characterSpacing: spacing, features: NO_KERN });
+  }
+
+  /** Splits text into lines no wider than maxW: at spaces, and inside a word only when the word alone doesn't fit. */
+  wrap(s: string, maxW: number, size: number, weight: Weight = "regular", spacing = 0): string[] {
+    const fits = (t: string) => this.width(t, size, weight, spacing) <= maxW;
+    const lines: string[] = [];
+    let line = "";
+    for (let word of s.split(/\s+/).filter(Boolean)) {
+      const joined = line ? `${line} ${word}` : word;
+      if (fits(joined)) {
+        line = joined;
+        continue;
+      }
+      if (line) lines.push(line);
+      while (word.length > 1 && !fits(word)) {
+        let n = 1;
+        while (n < word.length - 1 && fits(word.slice(0, n + 1))) n++;
+        lines.push(word.slice(0, n));
+        word = word.slice(n);
+      }
+      line = word;
+    }
+    if (line || lines.length === 0) lines.push(line);
+    return lines;
+  }
+
+  /** Draws text wrapped to maxW, the first line centred on `y` like text(), the rest below it. Returns the line count. */
+  para(s: string, x: number, y: number, o: TextOpts & { maxW: number; lineH: number }): number {
+    const lines = this.wrap(s, o.maxW, o.size, o.weight, o.spacing);
+    lines.forEach((line, i) => this.text(line, x, y + i * o.lineH, { ...o, maxW: undefined }));
+    return lines.length;
   }
 
   fit(s: string, maxW: number, size: number, weight: Weight = "regular", spacing = 0): string {
@@ -137,7 +173,7 @@ class Painter {
       .font(weight)
       .fontSize(o.size)
       .fillColor(o.color ?? C.fg)
-      .text(str, left, y - o.size * 0.6, { lineBreak: false, characterSpacing: spacing });
+      .text(str, left, y - o.size * 0.6, { lineBreak: false, characterSpacing: spacing, features: NO_KERN });
     return w;
   }
 
@@ -746,17 +782,20 @@ function drawElectricityPages(r: Painter, rep: Report, e: Electricity, newPage: 
     drawMeterOverview(r, rep, e, u);
 
     const rows = topUpRows(u);
-    const perPage = Math.floor((READINGS_BOTTOM - TABLE_TOP - HEAD_H) / TOPUP_ROW_H);
-    for (let i = 0; i < Math.max(rows.length, 1); i += perPage) {
+    const topUpH = rows.map((row) => topUpRowH(r, row));
+    const foot = topUpFoot(rows);
+    const footH = foot ? 12 + r.wrap(foot, TW, FOOT_SIZE).length * FOOT_LH : 0;
+    for (const [a, b] of pageRows(topUpH, footH)) {
       newPage();
-      drawTopUpsPage(r, rep, u, rows.slice(i, i + perPage), i > 0, i + perPage >= rows.length);
+      drawTopUpsPage(r, rep, u, rows.slice(a, b), topUpH.slice(a, b), a, b >= rows.length ? foot : "");
     }
 
     const photos = u.photos;
-    const perReadings = Math.floor((READINGS_BOTTOM - TABLE_TOP - HEAD_H) / READING_ROW_H);
-    for (let i = 0; i < photos.length; i += perReadings) {
+    const readingH = photos.map((p) => readingRowH(r, p));
+    for (const [a, b] of pageRows(readingH)) {
+      if (a === b) continue; // no photos, no readings page
       newPage();
-      drawReadingsPage(r, rep, e, u, photos.slice(i, i + perReadings), i > 0);
+      drawReadingsPage(r, rep, e, u, photos.slice(a, b), readingH.slice(a, b), a);
     }
   }
 }
@@ -764,6 +803,41 @@ function drawElectricityPages(r: Painter, rep: Report, e: Electricity, newPage: 
 const READING_ROW_H = 15;
 const TOPUP_ROW_H = 19;
 const READINGS_BOTTOM = H - M - 14;
+/** Line height of cell text that doesn't fit on one line: it continues below, the row grows. */
+const CELL_LH = 9;
+const FOOT_SIZE = 6.8;
+const FOOT_LH = 8.5;
+
+/**
+ * Rows per page, as [start, end) pairs, filling each page by the rows' heights. The last page also keeps
+ * `tail` free for the notes under the table. Always at least one page (an empty table says so).
+ */
+function pageRows(heights: number[], tail = 0): [number, number][] {
+  const avail = READINGS_BOTTOM - TABLE_TOP - HEAD_H;
+  const pages: [number, number][] = [];
+  let start = 0;
+  let used = 0;
+  heights.forEach((h, i) => {
+    if (i > start && used + h > avail) {
+      pages.push([start, i]);
+      start = i;
+      used = 0;
+    }
+    used += h;
+  });
+  // The notes don't fit under the last page's rows: its last row moves to a page of its own, with the notes
+  if (heights.length - start > 1 && used + tail > avail) {
+    pages.push([start, heights.length - 1]);
+    start = heights.length - 1;
+  }
+  pages.push([start, heights.length]);
+  return pages;
+}
+
+/** Every second row of a table is shaded; `i` counts from the table's first row, across pages. */
+function stripe(r: Painter, i: number, y: number, h: number) {
+  if (i % 2 === 1) r.doc.rect(M, y, TW, h).fill(C.subtle);
+}
 
 function drawMeterOverview(r: Painter, rep: Report, e: Electricity, u: MeterUsage) {
   const year = rep.year;
@@ -809,9 +883,15 @@ function drawMeterOverview(r: Painter, rep: Report, e: Electricity, u: MeterUsag
   kpi(1, "trending", "Average per day", rate ? kwh(rate.perDay, 1) : "—", rate ? "kWh" : "",
     rate ? `over ${Math.round(rate.days)} days between dated photos` : "needs two top-ups with a capture date",
     u.recent ? `lately ${kwh(u.recent.perDay, 1)} a day, since ${shortDate(u.recent.from)}` : "");
-  kpi(2, "plus", `Top-ups in ${year}`, `${f.count}`, "",
-    f.avgDays !== null ? `about every ${Math.round(f.avgDays)} days` : f.count ? "" : "none yet",
-    f.count ? `${kwh(u.totalToppedUp, 0)} kWh in total` : "");
+  // Spent: the amounts on the top-ups' Payment files (the main currency in the card, any other below it)
+  const [spent, ...otherSpent] = u.spent;
+  const topUps = `${f.count} top-up${f.count === 1 ? "" : "s"}` + (f.avgDays !== null ? `, about every ${Math.round(f.avgDays)} days` : "");
+  kpi(2, "banknote", `Spent in ${year}`, spent ? money(spent.amount, "") : "—", spent?.currency ?? "",
+    f.count ? topUps : "no top-ups yet",
+    !spent ? (f.count ? "needs the top-ups' Payment files" : "")
+      : otherSpent.length ? `+ ${otherSpent.map((o) => money(o.amount, o.currency)).join(" + ")}`
+      : u.spentUnknown ? `${u.spentUnknown} top-up${u.spentUnknown === 1 ? "" : "s"} without a payment amount`
+      : spent.perKwh !== null ? `${money(spent.perKwh, spent.currency, 0)} a kWh` : "");
   kpi(3, "wallet", "Balance", u.balance ? kwh(u.balance.kwh, 1) : "—", u.balance ? "kWh" : "",
     u.balance ? (u.balance.kwhEstimated ? `estimated, after the top-up on ${pointLabel(u.balance)}` : `at the last photo, ${pointLabel(u.balance)}`) : "no balance photo yet",
     f.next ? `next top-up around ${shortDate(f.next)}` : u.runsOut ? `runs out about ${shortDate(u.runsOut)}` : "");
@@ -953,10 +1033,18 @@ function drawNextTopUp(r: Painter, rep: Report, u: MeterUsage, x: number, y: num
     });
   }
   if (u.runsOut && u.balance) items.push({ label: "Credit runs out", value: `about ${shortDate(u.runsOut)}`, notes: [`${kwh(u.balance.kwh, 1)} kWh left on ${pointLabel(u.balance)}`] });
-  if (f.last) items.push({ label: "Last top-up", value: `${eventLabel(f.last)} · ${f.last.amountUnknown && !f.last.amountInferred ? "?" : kwh(f.last.amount, 0)} kWh`, notes: f.last.estimated ? undefined : [`${days(f.last.at, today)} days ago`] });
+  if (f.last) {
+    const note = [f.last.paid ? money(f.last.paid.amount, f.last.paid.currency) : "", f.last.estimated ? "" : `${days(f.last.at, today)} days ago`].filter(Boolean).join(" · ");
+    items.push({ label: "Last top-up", value: `${eventLabel(f.last)} · ${f.last.amountUnknown && !f.last.amountInferred ? "?" : kwh(f.last.amount, 0)} kWh`, notes: note ? [note] : undefined });
+  }
   if (f.avgDays !== null) items.push({ label: "Usually every", value: `${Math.round(f.avgDays)} days`, notes: [`${kwh(f.perMonth ?? 0, 1)} top-ups a month`] });
   if (f.avgUsed !== null) items.push({ label: "Used per top-up", value: `${kwh(f.avgUsed, 0)} kWh`, notes: ["average, from one top-up to the next"] });
   if (f.usualBefore !== null) items.push({ label: "You top up at", value: `${kwh(f.usualBefore, 0)} kWh left`, notes: ["usual credit just before a top-up"] });
+  const [spent] = u.spent;
+  if (spent && u.spent.length === 1) {
+    items.push({ label: "Paid per top-up", value: money(spent.amount / spent.topUps, spent.currency, 0),
+      notes: [`average over ${spent.topUps}`, ...(spent.perKwh !== null ? [`${money(spent.perKwh, spent.currency, 0)} a kWh`] : [])] });
+  }
   if (f.avgAmount !== null) items.push({ label: `Top-ups in ${rep.year}`, value: `${f.count} · ${kwh(f.avgAmount, 0)} kWh each`, notes: f.count ? undefined : ["none yet"] });
   if (!u.rate) items.push({ label: "kWh a day", value: "not yet", notes: ["needs two top-ups with a capture date"] });
 
@@ -1018,6 +1106,8 @@ interface TopUpRow {
   amountUnknown: boolean;
   used: number | null;
   perDay: number | null;
+  /** What the top-up cost, from its Payment file. */
+  paid: Paid | null;
   note: string;
   problem: boolean;
 }
@@ -1057,6 +1147,7 @@ function topUpRows(u: MeterUsage): TopUpRow[] {
       amountUnknown: ev.amountUnknown,
       used: ev.usedSincePrev,
       perDay: ev.perDay,
+      paid: ev.paid,
       note: notes.join(" · "),
       problem: Boolean(ev.problem),
     };
@@ -1081,6 +1172,7 @@ function topUpRows(u: MeterUsage): TopUpRow[] {
       amountUnknown: false,
       used: s.used,
       perDay: s.perDay,
+      paid: null,
       note: "latest photo: credit left, no top-up yet",
       problem: false,
     });
@@ -1088,12 +1180,30 @@ function topUpRows(u: MeterUsage): TopUpRow[] {
   return rows;
 }
 
-function drawTopUpsPage(r: Painter, rep: Report, u: MeterUsage, rows: TopUpRow[], cont: boolean, isLast: boolean) {
+// x positions: text columns left-aligned, numbers right-aligned at the given edge
+const TOPUP_COL = { n: M + 14, date: M + 36, since: M + 166, before: M + 232, added: M + 302, after: M + 368, paid: M + 456, used: M + 536, perDay: M + 600, note: M + 620 };
+const TOPUP_NOTE = { size: 7, maxW: M + TW - TOPUP_COL.note - 12, lineH: CELL_LH };
+
+function topUpRowH(r: Painter, row: TopUpRow): number {
+  return TOPUP_ROW_H + (r.wrap(row.note, TOPUP_NOTE.maxW, TOPUP_NOTE.size).length - 1) * CELL_LH;
+}
+
+/** The marks' explanation under the top-ups table, for the marks it uses. */
+function topUpFoot(rows: TopUpRow[]): string {
+  return [
+    rows.some((x) => x.amountInferred || (x.afterDerived && !x.afterEstimated)) ? "* worked out from the other photos of that top-up (see notes)" : "",
+    rows.some((x) => x.beforeEstimated || x.afterEstimated || x.usedEstimated)
+      ? "~ estimated: a top-up with only payment files. The kWh used from the top-up before it to the one after stays exact; it's split between the two by time."
+      : "",
+  ].filter(Boolean).join("    ");
+}
+
+function drawTopUpsPage(r: Painter, rep: Report, u: MeterUsage, rows: TopUpRow[], heights: number[], first: number, foot: string) {
   const tw = r.text(`${u.meter} top-ups`, M, M + 8, { size: 15, weight: "bold" });
-  r.text(cont ? `${rep.year} · continued` : `${rep.year}`, M + tw + 7, M + 9, { size: 11, weight: "medium", color: C.faint });
-  r.text(
-    "Each top-up on one row: the credit just before, the kWh added and the credit just after. Used since last top-up = credit after the previous one − credit before this one. Days and per day: only when both have a capture date.",
-    M, M + 25, { size: 7.2, color: C.muted, maxW: TW }
+  r.text(first > 0 ? `${rep.year} · continued` : `${rep.year}`, M + tw + 7, M + 9, { size: 11, weight: "medium", color: C.faint });
+  r.para(
+    "Each top-up on one row: the credit just before, the kWh added, the credit just after and what you paid (from its Payment file). Used since last top-up = credit after the previous one − credit before this one. Days and per day: only when both have a capture date.",
+    M, M + 25, { size: 7.2, color: C.muted, maxW: TW, lineH: 8.6 }
   );
   if (rows.length === 0) {
     r.text("No top-ups found yet. Add photos of the meter before and after a top-up (and of the amount added).", M, TABLE_TOP + 14, { size: 9, color: C.muted });
@@ -1102,9 +1212,8 @@ function drawTopUpsPage(r: Painter, rep: Report, u: MeterUsage, rows: TopUpRow[]
 
   const d = r.doc;
   const top = TABLE_TOP;
-  const tableH = HEAD_H + rows.length * TOPUP_ROW_H;
-  // x positions: text columns left-aligned, numbers right-aligned at the given edge
-  const col = { n: M + 14, date: M + 36, since: M + 180, before: M + 262, added: M + 340, after: M + 418, used: M + 530, perDay: M + 600, note: M + 620 };
+  const tableH = HEAD_H + heights.reduce((s, h) => s + h, 0);
+  const col = TOPUP_COL;
   d.save();
   d.roundedRect(M, top, TW, tableH, 9).clip();
   d.rect(M, top, TW, HEAD_H).fill(C.subtle);
@@ -1119,15 +1228,21 @@ function drawTopUpsPage(r: Painter, rep: Report, u: MeterUsage, rows: TopUpRow[]
   head("BEFORE", col.before, "right", "KWH");
   head("TOPPED UP", col.added, "right", "KWH");
   head("AFTER", col.after, "right", "KWH");
+  // One currency: in the header, the column just numbers. Several: each amount says its own.
+  const currencies = new Set(rows.flatMap((x) => (x.paid ? [x.paid.currency] : [])));
+  const oneCurrency = currencies.size === 1 ? [...currencies][0] : null;
+  head("PAID", col.paid, "right", oneCurrency || undefined);
   head("USED SINCE", col.used, "right", "LAST TOP-UP");
   head("PER DAY", col.perDay, "right", "KWH");
   head("NOTES", col.note, "left");
   d.moveTo(M, top + HEAD_H).lineTo(M + TW, top + HEAD_H).lineWidth(0.75).stroke(C.border);
 
   let y = top + HEAD_H;
-  for (const row of rows) {
-    const cy = y + TOPUP_ROW_H / 2;
-    if (row.kind === "now") d.rect(M, y, TW, TOPUP_ROW_H).fill(C.subtle);
+  rows.forEach((row, i) => {
+    const rowH = heights[i];
+    const cy = y + TOPUP_ROW_H / 2; // the first line; a note that doesn't fit continues below it
+    if (row.kind === "now") d.rect(M, y, TW, rowH).fill(C.mutedBg);
+    else stripe(r, first + i, y, rowH);
     const dim = row.kind === "now";
     r.text(row.kind === "now" ? "" : `${row.n}`, col.n, cy, { size: 7.8, color: C.faint });
     r.text(row.label, col.date, cy, { size: 8, weight: "medium", color: dim ? C.muted : C.fg2 });
@@ -1140,30 +1255,50 @@ function drawTopUpsPage(r: Painter, rep: Report, u: MeterUsage, rows: TopUpRow[]
     if (row.after !== null) {
       r.text(`${est(row.afterEstimated)}${kwh(row.after, 2)}${row.afterDerived && !row.afterEstimated ? "*" : ""}`, col.after, cy, { size: 8, color: row.afterEstimated ? C.faint : C.fg2, align: "right" });
     }
+    if (row.kind === "topup") {
+      r.text(row.paid ? money(row.paid.amount, oneCurrency !== null ? "" : row.paid.currency) : "—", col.paid, cy, { size: 8, color: row.paid ? C.fg2 : C.faint, align: "right" });
+    }
     r.text(row.used === null ? "—" : est(row.usedEstimated) + kwh(row.used, 1), col.used, cy, { size: 8, weight: "semibold", color: row.used === null ? C.faint : C.fg, align: "right" });
     r.text(row.perDay === null ? "—" : est(row.usedEstimated) + kwh(row.perDay, 1), col.perDay, cy, { size: 8, color: C.muted, align: "right" });
-    r.text(row.note, col.note, cy, { size: 7, color: row.problem ? C.roseText : C.muted, maxW: M + TW - col.note - 12 });
-    d.moveTo(M, y + TOPUP_ROW_H).lineTo(M + TW, y + TOPUP_ROW_H).lineWidth(0.5).stroke(C.line);
-    y += TOPUP_ROW_H;
-  }
+    r.para(row.note, col.note, cy, { ...TOPUP_NOTE, color: row.problem ? C.roseText : C.muted });
+    d.moveTo(M, y + rowH).lineTo(M + TW, y + rowH).lineWidth(0.5).stroke(C.line);
+    y += rowH;
+  });
   d.restore();
   d.lineWidth(0.75).roundedRect(M, top, TW, tableH, 9).stroke(C.border);
-  const foot = [
-    rows.some((x) => x.amountInferred || (x.afterDerived && !x.afterEstimated)) ? "* worked out from the other photos of that top-up (see notes)" : "",
-    rows.some((x) => x.beforeEstimated || x.afterEstimated || x.usedEstimated)
-      ? "~ estimated: a top-up with only payment files. The kWh used from the top-up before it to the one after stays exact; it's split between the two by time."
-      : "",
-  ].filter(Boolean);
-  if (isLast && foot.length) r.text(foot.join("    "), M, top + tableH + 12, { size: 6.8, color: C.faint, maxW: TW });
+  if (foot) r.para(foot, M, top + tableH + 12, { size: FOOT_SIZE, color: C.faint, maxW: TW, lineH: FOOT_LH });
 }
 
-function drawReadingsPage(r: Painter, rep: Report, e: Electricity, u: MeterUsage, rows: MeterUsage["photos"], cont: boolean) {
+type MeterPhotoRow = MeterUsage["photos"][number];
+const READING_COL = { taken: M + 14, photo: M + 96, kind: M + 350, code: M + 404, kwh: M + 484, by: M + 500, cost: M + TW - 14 };
+const READING_FILE = { size: 7.5, maxW: READING_COL.kind - READING_COL.photo - 12, lineH: CELL_LH };
+const READING_BY = { size: 7.2, maxW: READING_COL.cost - 150 - READING_COL.by, lineH: CELL_LH };
+
+/** Who read a photo, with a low-confidence flag and the reader's note; null when it isn't read yet. */
+function readingBy(p: MeterPhotoRow): { text: string; flagged: boolean } | null {
+  const rd = p.reading;
+  if (!rd) return null;
+  const by = rd.edited ? "corrected by hand" : rd.by.split("/").pop() ?? rd.by;
+  const flag = !rd.edited && rd.confidence !== "high" ? ` · ${rd.confidence} confidence` : "";
+  return { text: by + flag + (rd.note ? ` · ${rd.note}` : ""), flagged: flag !== "" };
+}
+
+function readingRowH(r: Painter, p: MeterPhotoRow): number {
+  const by = readingBy(p);
+  const lines = Math.max(
+    r.wrap(p.file, READING_FILE.maxW, READING_FILE.size).length,
+    by ? r.wrap(by.text, READING_BY.maxW, READING_BY.size).length : 1
+  );
+  return READING_ROW_H + (lines - 1) * CELL_LH;
+}
+
+function drawReadingsPage(r: Painter, rep: Report, e: Electricity, u: MeterUsage, rows: MeterPhotoRow[], heights: number[], first: number) {
   const tw = r.text(`${u.meter} readings`, M, M + 8, { size: 15, weight: "bold" });
-  r.text(cont ? `${rep.year} · continued` : `${rep.year}`, M + tw + 7, M + 9, { size: 11, weight: "medium", color: C.faint });
+  r.text(first > 0 ? `${rep.year} · continued` : `${rep.year}`, M + tw + 7, M + 9, { size: 11, weight: "medium", color: C.faint });
   const note = e.blocked && u.unread
     ? e.blocked
     : "Times: each photo's capture date (§ the top-up's Payment file). Correct readings in the settings window or personal-file-map.readings.json.";
-  r.text(note, M, M + 25, { size: 7.2, color: e.blocked && u.unread ? C.amberText : C.muted, maxW: TW - 260 });
+  r.para(note, M, M + 25, { size: 7.2, color: e.blocked && u.unread ? C.amberText : C.muted, maxW: TW - 260, lineH: 8.6 });
   const ai = aiTotals([...u.photos.map((p) => p.reading), ...e.payments.filter((q) => q.meter === u.meter).map((q) => q.reading)]);
   if (ai.photos) {
     const cost = ai.unpriced === ai.photos ? "cost unknown" : `about ${usd(ai.costUsd)}${ai.unpriced ? ` + ${ai.unpriced} unpriced` : ""}`;
@@ -1173,8 +1308,8 @@ function drawReadingsPage(r: Painter, rep: Report, e: Electricity, u: MeterUsage
 
   const d = r.doc;
   const top = TABLE_TOP;
-  const tableH = HEAD_H + rows.length * READING_ROW_H;
-  const col = { taken: M + 14, photo: M + 96, kind: M + 350, code: M + 404, kwh: M + 484, by: M + 500, cost: M + TW - 14 };
+  const tableH = HEAD_H + heights.reduce((s, h) => s + h, 0);
+  const col = READING_COL;
   d.save();
   d.roundedRect(M, top, TW, tableH, 9).clip();
   d.rect(M, top, TW, HEAD_H).fill(C.subtle);
@@ -1191,14 +1326,16 @@ function drawReadingsPage(r: Painter, rep: Report, e: Electricity, u: MeterUsage
   d.moveTo(M, top + HEAD_H).lineTo(M + TW, top + HEAD_H).lineWidth(0.75).stroke(C.border);
 
   let y = top + HEAD_H;
-  for (const p of rows) {
-    const cy = y + READING_ROW_H / 2;
+  rows.forEach((p, i) => {
+    const rowH = heights[i];
+    const cy = y + READING_ROW_H / 2; // the first line; a file name or note that doesn't fit continues below it
+    stripe(r, first + i, y, rowH);
     const rd = p.reading;
     r.text(`${shortDate(p.takenAt)} ${hhmm(p.takenAt)}${p.dateSource === "month" ? " *" : p.dateSource === "payment" ? " §" : ""}`, col.taken, cy, {
       size: 7.5,
       color: p.dateSource === "photo" || p.dateSource === "payment" ? C.fg2 : C.muted,
     });
-    r.text(p.file, col.photo, cy, { size: 7.5, color: C.fg2, maxW: col.kind - col.photo - 12 });
+    r.para(p.file, col.photo, cy, { ...READING_FILE, color: C.fg2 });
     if (!rd) {
       r.pill("Not read", col.kind, cy, { fg: C.amberText, bg: C.amberBg, size: 6.6, h: 11.5 });
     } else {
@@ -1208,21 +1345,26 @@ function drawReadingsPage(r: Painter, rep: Report, e: Electricity, u: MeterUsage
       r.pill(label, col.kind, cy, { ...tone, size: 6.6, h: 11.5 });
       if (rd.code) r.text(rd.code, col.code, cy, { size: 7.5, color: C.muted });
       if (kind !== "other") r.text(kwh(rd.kwh, 2), col.kwh, cy, { size: 7.8, weight: "semibold", align: "right" });
-      const by = rd.edited ? "corrected by hand" : rd.by.split("/").pop() ?? rd.by;
-      const flag = !rd.edited && rd.confidence !== "high" ? ` · ${rd.confidence} confidence` : "";
-      const extra = rd.note ? ` · ${rd.note}` : "";
-      r.text(by + flag + extra, col.by, cy, { size: 7.2, color: flag ? C.amberText : C.muted, maxW: col.cost - 150 - col.by });
+      const by = readingBy(p)!;
+      r.para(by.text, col.by, cy, { ...READING_BY, color: by.flagged ? C.amberText : C.muted });
       if (rd.usage) {
         const u2 = rd.usage;
         const cost = typeof rd.costUsd === "number" ? usd(rd.costUsd) : "?";
         r.text(`${tok(u2.input)} / ${tok(u2.output)} / ${tok(u2.cacheRead + u2.cacheWrite)} · ${cost}`, col.cost, cy, { size: 7.2, color: C.muted, align: "right" });
       }
     }
-    d.moveTo(M, y + READING_ROW_H).lineTo(M + TW, y + READING_ROW_H).lineWidth(0.5).stroke(C.line);
-    y += READING_ROW_H;
-  }
+    d.moveTo(M, y + rowH).lineTo(M + TW, y + rowH).lineWidth(0.5).stroke(C.line);
+    y += rowH;
+  });
   d.restore();
   d.lineWidth(0.75).roundedRect(M, top, TW, tableH, 9).stroke(C.border);
+}
+
+/** "IDR 250,000", or "250,000" without a currency; cents only when there are any (or `digits` says how many). */
+function money(n: number, currency: string, digits?: number): string {
+  const d = digits ?? (Number.isInteger(Math.round(n * 100) / 100) ? 0 : 2);
+  const s = n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  return currency ? `${currency} ${s}` : s;
 }
 
 function kwh(n: number, digits: number): string {
