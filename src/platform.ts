@@ -64,7 +64,7 @@ export function openAppWindow(url: string): "app" | "browser" {
     const args = [
       `--app=${url}`,
       `--user-data-dir=${profile}`,
-      "--window-size=1040,820",
+      "--window-size=1320,880",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-features=Translate",
@@ -181,4 +181,14 @@ export function hideOwnConsoleWindow(): void {
   } catch {
     /* cosmetic only */
   }
+}
+
+/** macOS: opens System Settings → Privacy & Security → Files & Folders. Returns false elsewhere. */
+export function openPrivacySettings(): boolean {
+  if (!isMac) return false;
+  spawn("open", ["x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders"], {
+    detached: true,
+    stdio: "ignore",
+  }).unref();
+  return true;
 }

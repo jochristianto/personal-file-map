@@ -103,21 +103,23 @@ Examples: `202601 Rent.pdf`, `202603 Internet Payment.jpg`, `202604 Meter 01 Pho
 
 ## Settings window
 
-Every option is set in the window; there's no need to edit files.
+Every option is set in the window; there's no need to edit files. The bill list fills the left of the window; the bills folder and the schedule guide sit in a sidebar on the right (a quarter of the width) that stays in view while you scroll. In a narrow window they stack, folder first.
 
 | In the window | Saved in `config.local.json` as |
 |---|---|
 | **Bills folder** (type it, or **Browse…**) | `"folder"`; a folder inside the app's folder is saved as `"./…"` |
 | **Monthly** | `"monthly"` |
 | **Quarterly** | `"quarterly"` |
-| **Every N months**, from / until | `{ "every": N, "from": …, "until": … }` |
+| **Every N months** (N picked from 1–12), from / until | `{ "every": N, "from": …, "until": … }` |
 | **Specific months**, from / until | `{ "months": [ … ], "from": …, "until": … }` |
 | **Irregular** | `"irregular"` |
 | **Not scheduled** | `null` |
 | **+ Add bill** / **✕** | adds / removes a key |
 
+- **What the schedules mean** (in the sidebar, collapsible) shows each schedule type side by side: an example of its months, whether empty months are flagged as *missing* / *due*, and when to use it.
 - Under the folder it shows where that resolves to and how many files and bills it found. Each bill shows its expected months (dark) and the months with a file (green dot), and which files its name covers.
 - Bills found in the folder that no name covers are listed with a **New** badge as *monthly*, the same thing the app used to add to `config.local.json` by itself. Change them before generating, or leave them.
+- If macOS blocks the folder (e.g. on Google Drive), the message has an **Open Privacy & Security settings** button that opens Files & Folders, and the folder is checked again when you come back to the window.
 - Problems (a bill without a name, a name listed twice, a *Specific months* bill with no month picked, a missing folder) are shown in place, and **Generate report** waits until they're fixed.
 - **Generate report** (or ⌘/Ctrl + Enter) saves `config.local.json`, then tidies the folder and writes the PDF exactly as before. Afterwards **Open PDF** and **Show in Finder/Explorer** appear; change something and generate again as often as you like.
 - If `config.local.json` was broken by hand, the window says why and starts from the defaults; generating replaces the file.
@@ -232,7 +234,7 @@ To run without double-clicking, e.g. on the samples: `BILLS_DIR=out pnpm dev`. T
 | Report is empty or everything says *Not scheduled* | In the settings window, check the bills folder shows files, and that the bills have a schedule other than *Not scheduled*. |
 | "The bills folder doesn't exist" | Fix the bills folder in the settings window (or **Browse…**); the message shows the resolved path. |
 | The settings window doesn't appear | After a minute the app shows its address; open that in any browser. |
-| "macOS blocked access" | System Settings → Privacy & Security → Files & Folders → allow *Bills Overview*. |
+| "macOS blocked access" | Click **Open Privacy & Security settings** under the message (or go to System Settings → Privacy & Security → Files & Folders) and allow *Bills Overview*. Back in the window, the folder is checked again by itself, or click **Try again**. |
 | "… is open in another app" (Windows) | Close `bills-overview.output.pdf` and run again. |
 | A file is missing from the report | Look under *Housekeeping* on page 1; it says why each skipped file was skipped. |
 

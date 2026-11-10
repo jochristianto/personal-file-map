@@ -93,18 +93,25 @@ export async function generate(appDir: string, today: Date, created: boolean): P
   };
 }
 
-/** Throws a readable error if the bills folder is missing or blocked. */
+/** The bills folder is missing or can't be read. `blocked`: macOS privacy settings denied access. */
+export class FolderError extends Error {
+  constructor(message: string, readonly blocked = false) {
+    super(message);
+  }
+}
+
+/** Throws a readable FolderError if the bills folder is missing or blocked. */
 export async function checkFolder(dir: string, setting: string | undefined) {
   try {
     await fs.readdir(dir);
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     const where = setting && setting !== DEFAULT_FOLDER ? `\n\n(folder setting: "${setting}")` : "";
-    if (code === "ENOENT" || code === "ENOTDIR") throw new Error(`The bills folder doesn't exist:\n${dir}${where}`);
-    const hint =
-      isMac && (code === "EPERM" || code === "EACCES")
-        ? "\n\nmacOS blocked access. Open System Settings → Privacy & Security → Files & Folders and allow “Bills Overview”, then try again."
-        : "";
-    throw new Error(`Can't open the bills folder:\n${dir}${where}${hint}`);
+    if (code === "ENOENT" || code === "ENOTDIR") throw new FolderError(`The bills folder doesn't exist:\n${dir}${where}`);
+    const blocked = isMac && (code === "EPERM" || code === "EACCES");
+    const hint = blocked
+      ? "\n\nmacOS blocked access. Open System Settings → Privacy & Security → Files & Folders and allow “Bills Overview”, then try again."
+      : "";
+    throw new FolderError(`Can't open the bills folder:\n${dir}${where}${hint}`, blocked);
   }
 }

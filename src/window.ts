@@ -16,9 +16,9 @@ import {
   saveSettings,
   type ScheduleSpec,
 } from "./config";
-import { checkFolder, generate } from "./generate";
+import { checkFolder, FolderError, generate } from "./generate";
 import { detectYear, selfName } from "./locate";
-import { chooseFolder, isWin, openAppWindow, openFile, revealFile, showAlert, writeLog } from "./platform";
+import { chooseFolder, isWin, openAppWindow, openFile, openPrivacySettings, revealFile, showAlert, writeLog } from "./platform";
 import { scanDirectory } from "./scan";
 import page from "./window.html";
 
@@ -139,6 +139,7 @@ export async function runSettingsWindow(opts: WindowOptions): Promise<void> {
 
         case "POST /api/open": {
           const { target } = (await readJson(req)) as { target?: string };
+          if (target === "privacy") return json(res, { ok: openPrivacySettings() });
           if (lastOut && target === "pdf") openFile(lastOut);
           if (lastOut && target === "folder") revealFile(lastOut);
           return json(res, { ok: Boolean(lastOut) });
@@ -222,7 +223,7 @@ async function preview(appDir: string, folder: string, today: Date) {
   try {
     await checkFolder(dir, undefined); // the window shows the setting right above the message
   } catch (err) {
-    return { ok: false, dir, error: (err as Error).message };
+    return { ok: false, dir, error: (err as Error).message, blocked: err instanceof FolderError && err.blocked };
   }
   const year = detectYear(dir, today);
   const scan = await scanDirectory(dir, year, selfName());
