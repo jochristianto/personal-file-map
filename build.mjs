@@ -1,6 +1,7 @@
-// Builds the double-click apps.
-//   node build.mjs               → bundle + macOS .app + Windows .exe, copied next to this folder
-//   node build.mjs --bundle-only → just dist/bills-overview.cjs (run it with `node`)
+// Builds the double-click apps into out/.
+//   pnpm build                    → out/bills-overview.app + out/bills-overview.exe
+//   node build.mjs --bundle-only  → just out/build/bills-overview.cjs (run it with `node`)
+// Intermediates (bundle, raw executables, icon, Intel Mac app) go to out/build/.
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -8,8 +9,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const dist = path.join(here, "dist");
-const releaseDir = path.resolve(here, ".."); // the "bills" folder
+const releaseDir = path.join(here, "out"); // generated apps (git-ignored)
+const dist = path.join(releaseDir, "build"); // intermediates
 const APP_FILE = "bills-overview"; // bills-overview.app / bills-overview.exe
 const APP_TITLE = "Bills Overview"; // name shown by macOS
 const VERSION = JSON.parse(fs.readFileSync(path.join(here, "package.json"), "utf8")).version;
@@ -50,7 +51,7 @@ console.log("✓ executables");
 // 3. Windows: the .exe is the app
 const exeOut = path.join(releaseDir, `${APP_FILE}.exe`);
 fs.copyFileSync(bin("win-x64.exe"), exeOut);
-console.log(`✓ ${path.relative(releaseDir, exeOut)}`);
+console.log(`✓ ${path.relative(here, exeOut)}`);
 
 // 4. macOS: wrap the binary in an .app bundle so Finder runs it without a Terminal window
 if (process.platform === "darwin") {
@@ -75,7 +76,7 @@ if (process.platform === "darwin") {
   const appOut = path.join(releaseDir, `${APP_FILE}.app`);
   fs.rmSync(appOut, { recursive: true, force: true });
   execFileSync("ditto", [hostApp, appOut]); // preserves the code signature
-  console.log(`✓ ${path.relative(releaseDir, appOut)}`);
+  console.log(`✓ ${path.relative(here, appOut)}`);
 }
 
 function infoPlist() {

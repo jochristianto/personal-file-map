@@ -1,5 +1,5 @@
-// Generates generic sample bills ("YYYYMM Name.ext") into ../../samples.
-//   node scripts/make-samples.mjs                 → current year, up to the current month
+// Generates generic sample bills ("YYYYMM Name.ext") into out/samples.
+//   pnpm samples                                  → current year, up to the current month
 //   node scripts/make-samples.mjs 2026 11         → a specific year / current month
 // Only files this script owns are replaced (YYYYMM-prefixed files and notes.txt).
 import PDFDocument from "pdfkit";
@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const out = path.resolve(here, "../../samples");
+const out = path.resolve(here, "../out/samples");
 const now = new Date();
 const YEAR = Number(process.argv[2]) || now.getFullYear();
 const CUR = Number(process.argv[3]) || now.getMonth() + 1; // "this month" for the samples

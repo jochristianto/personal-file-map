@@ -1,11 +1,11 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-// source/config.default.json is compiled into the app: the template for new config.local.json files.
+// config.default.json is compiled into the app: the template for new config.local.json files.
 import embeddedDefaults from "../config.default.json";
 
 /**
- * - config.default.json: built into the app (edit source/config.default.json and rebuild).
+ * - config.default.json: built into the app (edit config.default.json and rebuild).
  *   Template for config.local.json, plus base bill schedules.
  * - config.local.json: next to the app, created on first run from the template. Its "folder" says
  *   where the bills are; its bill keys replace the same keys in the default.

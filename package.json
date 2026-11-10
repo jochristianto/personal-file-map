@@ -4,7 +4,7 @@
   "private": true,
   "description": "Double-click generator for a monthly bills overview PDF (macOS + Windows)",
   "scripts": {
-    "dev": "node build.mjs --bundle-only && node dist/bills-overview.cjs",
+    "dev": "node build.mjs --bundle-only && node out/build/bills-overview.cjs",
     "typecheck": "tsc --noEmit",
     "build": "node build.mjs",
     "samples": "node scripts/make-samples.mjs"
@@ -22,5 +22,11 @@
     "jpeg-js": "^0.4.4",
     "pngjs": "^7.0.0",
     "typescript": "^5.9.3"
+  },
+  "packageManager": "pnpm@10.18.3",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

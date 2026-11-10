@@ -13,54 +13,53 @@ No terminal, Node or other installs are needed to run it: the runtime is inside 
 
 ## Generate the app and sample data
 
-The repo contains only source code. The apps and the sample bills are generated.
+The repo contains only source code. The apps and the sample bills are generated into **`out/`**, which is git-ignored.
 
-**Prerequisites:** macOS (the `.app` is assembled with macOS tools; the Windows `.exe` is cross-built on the Mac), [Node.js](https://nodejs.org) 24 (the version is in [`.nvmrc`](.nvmrc); with nvm, run `nvm use` in the repo root) and an internet connection for the first build.
+**Prerequisites:** macOS (the `.app` is assembled with macOS tools; the Windows `.exe` is cross-built on the Mac), [Node.js](https://nodejs.org) 24 (the version is in [`.nvmrc`](.nvmrc); with nvm, run `nvm use`), [pnpm](https://pnpm.io) 10 (`corepack enable` sets it up from `package.json`, or see [pnpm.io/installation](https://pnpm.io/installation)) and an internet connection for the first build. All commands run in the repo root.
 
 **1. Install the dependencies**
 
 ```bash
-cd source
-npm install
+pnpm install
 ```
 
 **2. Generate the sample data** (optional, to try the app without your own bills)
 
 ```bash
-npm run samples
+pnpm samples
 ```
 
-This writes ~200 generic bills to `samples/` in the repo root: monthly, quarterly, irregular and one-off bills for the current year up to the current month, plus a few deliberately wrong files that show up under *Housekeeping*. Running it again replaces them. For another year or "current" month, pass them explicitly:
+This writes ~200 generic bills to `out/samples/`: monthly, quarterly, irregular and one-off bills for the current year up to the current month, plus a few deliberately wrong files that show up under *Housekeeping*. Running it again replaces them. For another year or "current" month, pass them explicitly:
 
 ```bash
-node scripts/make-samples.mjs 2026 11
+pnpm samples 2026 11
 ```
 
 **3. Generate the app**
 
 ```bash
-npm run build
+pnpm build
 ```
 
-This creates, in the repo root:
+This creates:
 
 | File | For |
 |---|---|
-| `bills-overview.app` | macOS on Apple Silicon |
-| `bills-overview.exe` | Windows x64 |
+| `out/bills-overview.app` | macOS on Apple Silicon |
+| `out/bills-overview.exe` | Windows x64 |
 
-An Intel Mac build is left in `source/dist/bills-overview-intel.app`. The first build downloads the Node runtimes that get packed into the apps (about 60 MB each, cached afterwards), so it takes a minute; later builds are faster. [`source/config.default.json`](source/config.default.json) is compiled in: change it and rebuild to change the defaults new `config.local.json` files start from.
+An Intel Mac build and the other intermediates are left in `out/build/` (`out/build/bills-overview-intel.app`). The first build downloads the Node runtimes that get packed into the apps (about 60 MB each, cached afterwards), so it takes a minute; later builds are faster. [`config.default.json`](config.default.json) is compiled in: change it and rebuild to change the defaults new `config.local.json` files start from.
 
 **4. Try it on the samples**
 
 ```bash
-cp -R ../bills-overview.app ../samples/
-open ../samples/bills-overview.app
+cp -R out/bills-overview.app out/samples/
+open out/samples/bills-overview.app
 ```
 
-Or copy the app into `samples/` in Finder and double-click it. The report opens and is saved as `samples/bills-overview.output.pdf`, next to a new `samples/config.local.json`. On Windows, copy `bills-overview.exe` into `samples\` and double-click it.
+Or copy the app into `out/samples/` in Finder and double-click it. The report opens and is saved as `out/samples/bills-overview.output.pdf`, next to a new `out/samples/config.local.json`. On Windows, copy `bills-overview.exe` into `out\samples\` and double-click it.
 
-Everything generated (`samples/`, the apps, `config.local.json`, the PDFs, `source/dist`, `source/node_modules`) is git-ignored. Delete it any time and generate it again.
+Everything generated (`out/`, `node_modules/`, plus any `config.local.json` or `bills-overview.output.pdf` the app writes) is git-ignored. Delete it any time and generate it again.
 
 ## Quick start
 
@@ -101,7 +100,7 @@ Examples: `202601 Rent.pdf`, `202603 Internet Payment.jpg`, `202604 Meter 01 Pho
 
 ## Configuration
 
-Everything lives in **`config.local.json`**, next to the app. It's created automatically on the first run from the app's built-in defaults ([`source/config.default.json`](source/config.default.json)):
+Everything lives in **`config.local.json`**, next to the app. It's created automatically on the first run from the app's built-in defaults ([`config.default.json`](config.default.json)):
 
 ```json
 {
@@ -142,39 +141,57 @@ Which months each bill is expected. Nothing is guessed: a bill is only flagged a
 
 ## Development
 
-All commands run in `source/` (after `npm install`):
+All commands run in the repo root (after `pnpm install`):
 
 | Command | What |
 |---|---|
-| `npm run build` | Generate `bills-overview.app` and `bills-overview.exe` (see [above](#generate-the-app-and-sample-data)) |
-| `npm run samples` | Generate `samples/` (or `node scripts/make-samples.mjs <year> <month>`) |
-| `npm run typecheck` | TypeScript check |
-| `npm run dev` | Bundle and run once with Node, without packaging |
+| `pnpm build` | Generate `out/bills-overview.app` and `out/bills-overview.exe` (see [above](#generate-the-app-and-sample-data)) |
+| `pnpm samples [year] [month]` | Generate `out/samples/` |
+| `pnpm typecheck` | TypeScript check |
+| `pnpm dev` | Bundle and run once with Node, without packaging |
 
-To run without double-clicking: `node build.mjs --bundle-only`, then `BILLS_DIR=../samples BILLS_NO_OPEN=1 node dist/bills-overview.cjs`. `BILLS_DIR` stands in for the app's folder; `BILLS_TODAY=2026-11-10` fakes today's date.
+To run without double-clicking: `node build.mjs --bundle-only`, then `BILLS_DIR=out/samples BILLS_NO_OPEN=1 node out/build/bills-overview.cjs`. `BILLS_DIR` stands in for the app's folder; `BILLS_TODAY=2026-11-10` fakes today's date.
+
+### How it works
+
+`src/main.ts` runs once per double-click:
+
+1. **Configs** (`config.ts`): read `config.local.json` next to the app (`locate.ts` finds the app's folder, including inside a `.app` bundle) and merge it over the built-in `config.default.json`. `"folder"` gives the bills folder.
+2. **Scan** (`scan.ts`): lowercase extensions, convert HEIC to JPG, then parse `YYYYMM Name.ext` files. Everything else becomes a *Housekeeping* note.
+3. **Update config**: bills no key covers yet are appended to `config.local.json` as `"monthly"` (the file is created from the default template on first run).
+4. **Analyze** (`analyze.ts`): per bill and month, *paid* / *missing* / *due* / *none* / *future* from the schedules; groups by first word; stats for the overview page.
+5. **Render** (`pdf.ts`): A4 landscape PDF with pdfkit and embedded Inter fonts; overview page plus a paginated matrix.
+6. **Write and open** `bills-overview.output.pdf` (`platform.ts` handles dialogs and opening files per OS).
+
+`build.mjs` bundles everything into `out/build/bills-overview.cjs` with esbuild (fonts and `config.default.json` inlined; pdfkit's `import.meta.url` is shimmed for CJS), packages it with `@yao-pkg/pkg` for macOS arm64/x64 and Windows x64, wraps the macOS binaries in `.app` bundles (icon from `scripts/icon.mjs`, ad-hoc signed), and puts the Apple Silicon `.app` and the `.exe` in `out/`. Anything read at runtime must be inside the bundle: the packaged app can't read files from `node_modules`.
+
+`scripts/make-samples.mjs` draws its own JPG/PNG images (`jpeg-js`, `pngjs`) and PDF receipts, so it runs anywhere Node does.
 
 ## Project structure
 
 ```
 .
-├── README.md                 ← you are here
-├── samples/                  generated sample bills (npm run samples, git-ignored)
-├── source/
-│   ├── config.default.json   defaults compiled into the app
-│   ├── build.mjs             bundle (esbuild) → executables (pkg) → .app / .exe
-│   ├── scripts/
-│   │   ├── icon.mjs          draws the app icon
-│   │   └── make-samples.mjs  generates samples/
-│   └── src/
-│       ├── main.ts           entry point: configs → scan → analyze → PDF → open
-│       ├── config.ts         config.local.json / defaults, schedules, key matching
-│       ├── locate.ts         where the app lives, year detection
-│       ├── scan.ts           folder clean-up and file parsing
-│       ├── analyze.ts        paid / due / missing per bill and month, stats
-│       ├── pdf.ts            the report (pdfkit, Inter font)
-│       └── platform.ts       dialogs and opening files on macOS / Windows
-├── bills-overview.app        generated app (npm run build, git-ignored)
-└── bills-overview.exe        generated app (npm run build, git-ignored)
+├── README.md               ← you are here
+├── package.json            scripts and dependencies (pnpm)
+├── pnpm-lock.yaml
+├── config.default.json     defaults compiled into the app
+├── build.mjs               bundle (esbuild) → executables (pkg) → .app / .exe in out/
+├── scripts/
+│   ├── icon.mjs            draws the app icon
+│   └── make-samples.mjs    generates out/samples/
+├── src/
+│   ├── main.ts             entry point: configs → scan → analyze → PDF → open
+│   ├── config.ts           config.local.json / defaults, schedules, key matching
+│   ├── locate.ts           where the app lives, year detection
+│   ├── scan.ts             folder clean-up and file parsing
+│   ├── analyze.ts          paid / due / missing per bill and month, stats
+│   ├── pdf.ts              the report (pdfkit, Inter font)
+│   └── platform.ts         dialogs and opening files on macOS / Windows
+└── out/                    generated, git-ignored
+    ├── bills-overview.app  pnpm build
+    ├── bills-overview.exe  pnpm build
+    ├── samples/            pnpm samples
+    └── build/              build intermediates (incl. the Intel Mac app)
 ```
 
 ## Troubleshooting
