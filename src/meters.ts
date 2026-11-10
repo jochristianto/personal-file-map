@@ -27,7 +27,7 @@ import { meterUsage, type MeterUsage } from "./usage";
 
 /** "meters" in config.local.json. */
 export interface MeterSettings {
-  /** Bill keys whose photos are meter photos; each key is one meter (e.g. "Meter 01"). */
+  /** Bill keys whose photos are meter photos; each key is one meter (e.g. "Klaska PLN"). */
   bills: string[];
   reader: "off" | ProviderId;
   /** Model per provider, so switching back and forth keeps each choice. */
@@ -47,7 +47,7 @@ export function validateMeters(raw: unknown, source: string): MeterSettings {
   if (typeof raw !== "object" || Array.isArray(raw)) throw new Error(`"meters" in ${source} must be an object`);
   const { bills, reader, models, apiKeys } = raw as { bills?: unknown; reader?: unknown; models?: unknown; apiKeys?: unknown };
   if (bills !== undefined && (!Array.isArray(bills) || !bills.every((b) => typeof b === "string"))) {
-    throw new Error(`"meters.bills" in ${source} must be a list of bill names, e.g. ["Meter 01"]`);
+    throw new Error(`"meters.bills" in ${source} must be a list of bill names, e.g. ["Klaska PLN"]`);
   }
   if (reader !== undefined && reader !== "off" && !isProvider(reader)) {
     throw new Error(`"meters.reader" in ${source} must be "off", ${PROVIDERS.map((p) => `"${p.id}"`).join(" or ")}`);
@@ -177,7 +177,7 @@ export class ReadingStore {
 export type DateSource = "photo" | "file" | "month";
 
 export interface MeterPhoto {
-  meter: string; // the bill key, e.g. "Meter 01"
+  meter: string; // the bill key, e.g. "Klaska PLN"
   file: string;
   month: number;
   ext: string;

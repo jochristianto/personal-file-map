@@ -17,6 +17,7 @@ import {
   saveSettings,
   type ScheduleSpec,
 } from "./config";
+import { countTransactions } from "./analyze";
 import { checkFolder, FolderError, generate } from "./generate";
 import { detectYear, selfName } from "./locate";
 import { LOGS_FOLDER } from "./ailog";
@@ -179,6 +180,20 @@ export async function runSettingsWindow(opts: WindowOptions): Promise<void> {
           }
         }
 
+        case "POST /api/save": {
+          // "Save" in the window: config.local.json only, without generating the report
+          if (busy) return json(res, { ok: false, error: "Busy generating the report, one moment." });
+          busy = true;
+          try {
+            const { existed } = await saveFromWindow(opts, await readJson(req));
+            return json(res, { ok: true, created: !existed, configFile: path.join(opts.appDir, LOCAL_CONFIG_NAME) });
+          } catch (err) {
+            return json(res, { ok: false, error: err instanceof Error ? err.message : String(err) });
+          } finally {
+            busy = false;
+          }
+        }
+
         case "POST /api/open": {
           const { target } = (await readJson(req)) as { target?: string };
           if (target === "privacy") return json(res, { ok: openPrivacySettings() });
@@ -232,7 +247,17 @@ export async function runSettingsWindow(opts: WindowOptions): Promise<void> {
 }
 
 /** Checks what the window sent, saves it to config.local.json, then generates the report. */
+/** Saves the window's settings, then generates the report from them. */
 async function handleGenerate(opts: WindowOptions, body: unknown) {
+  const { existed } = await saveFromWindow(opts, body);
+  return generate(opts.appDir, opts.today(), !existed);
+}
+
+/**
+ * Checks what the window sent and writes it to config.local.json, with any API keys typed since the last
+ * save. Nothing else is touched: no folder tidying, no report. `existed`: the file was there before.
+ */
+async function saveFromWindow(opts: WindowOptions, body: unknown): Promise<{ existed: boolean }> {
   const { folder, bills, meters: rawMeters } = (body ?? {}) as { folder?: unknown; bills?: unknown; meters?: unknown };
   if (typeof folder !== "string" || !folder.trim()) throw new Error("Choose the folder with your bill files.");
   const meters = validateMeters(rawMeters, "the settings window");
@@ -263,7 +288,7 @@ async function handleGenerate(opts: WindowOptions, body: unknown) {
   saveSettings(opts.appDir, setting, Object.fromEntries(entries), meters, opts.pendingKeys);
   for (const k of Object.keys(opts.pendingKeys!)) delete opts.pendingKeys![k as keyof PendingKeys]; // written now
   console.log(`${existed ? "Saved" : "Created"} ${LOCAL_CONFIG_NAME}`);
-  return generate(opts.appDir, opts.today(), !existed);
+  return { existed };
 }
 
 /**
@@ -346,13 +371,16 @@ async function preview(appDir: string, folder: string, today: Date) {
   const year = detectYear(dir, today);
   const scan = await scanDirectory(dir, year, selfName());
   const byName = new Map<string, Set<number>>();
+  const txns = new Map<string, Set<string>[]>();
   for (const f of scan.files) {
     if (!byName.has(f.name)) byName.set(f.name, new Set());
     byName.get(f.name)!.add(f.month);
+    if (!txns.has(f.name)) txns.set(f.name, Array.from({ length: 12 }, () => new Set<string>()));
+    txns.get(f.name)![f.month - 1].add(f.txn === null ? "-" : String(f.txn));
   }
   const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
   const bills = [...byName.entries()]
-    .map(([name, months]) => ({ name, months: [...months].sort((a, b) => a - b) }))
+    .map(([name, months]) => ({ name, months: [...months].sort((a, b) => a - b), transactions: txns.get(name)!.map(countTransactions) }))
     .sort((a, b) => collator.compare(a.name, b.name));
   return { ok: true, dir, year, files: scan.files.length, skipped: scan.ignored.length, bills };
 }

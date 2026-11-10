@@ -38,7 +38,44 @@ export interface TopUp {
 export interface MonthUsage {
   used: number | null; // null: no period covers this month
   days: number; // days of the month covered by known usage
+  /** The whole month at the measured rate, when readings cover only part of it (at least 3 days). */
+  fullMonth: number | null;
   toppedUp: number;
+  topUps: number;
+}
+
+/**
+ * One top-up with the photos around it, merged: the balance just before, the kWh added, the balance just
+ * after. Photos taken within a few hours of each other belong to the same top-up.
+ */
+export interface TopUpEvent {
+  /** When the top-up happened: the top-up photo's time, else the after photo's, else the before photo's. */
+  at: Date;
+  before: { kwh: number; at: Date } | null;
+  amount: number;
+  /** No photo of the amount: worked out as after − before. */
+  amountInferred: boolean;
+  after: { kwh: number; at: Date } | null;
+  /** Days since the previous top-up (null for the first one). */
+  sincePrevDays: number | null;
+  /** kWh used from just after the previous top-up to just before this one. */
+  usedSincePrev: number | null;
+  perDay: number | null;
+  problem: string | null;
+  estimated: boolean;
+}
+
+/** How often the meter is topped up, from the top-ups of the year. */
+export interface TopUpFrequency {
+  count: number;
+  avgDays: number | null;
+  minDays: number | null;
+  maxDays: number | null;
+  avgAmount: number | null;
+  perMonth: number | null;
+  last: TopUpEvent | null;
+  /** The last top-up plus the usual interval. */
+  nextAround: Date | null;
 }
 
 export interface MeterUsage {
@@ -46,6 +83,8 @@ export interface MeterUsage {
   photos: MeterPhoto[];
   periods: Period[];
   topUps: TopUp[];
+  events: TopUpEvent[];
+  frequency: TopUpFrequency;
   months: MonthUsage[]; // index 0 = January
   totalUsed: number;
   coveredDays: number;
@@ -124,7 +163,7 @@ export function meterUsage(meter: string, photos: MeterPhoto[], year: number): M
   }
   topUps.push(...pending); // top-ups after the latest balance photo
 
-  const months: MonthUsage[] = Array.from({ length: 12 }, () => ({ used: null, days: 0, toppedUp: 0 }));
+  const months: MonthUsage[] = Array.from({ length: 12 }, () => ({ used: null, days: 0, fullMonth: null, toppedUp: 0, topUps: 0 }));
   for (const t of topUps) if (t.at.getFullYear() === year) months[t.at.getMonth()].toppedUp += t.kwh;
   for (const pr of periods) {
     if (pr.used === null || pr.short) continue;
@@ -140,6 +179,14 @@ export function meterUsage(meter: string, photos: MeterPhoto[], year: number): M
       months[m].days += (end - start) / 86_400_000;
     }
   }
+
+  for (let m = 0; m < 12; m++) {
+    const mu = months[m];
+    const inMonth = new Date(year, m + 1, 0).getDate();
+    if (mu.used !== null && mu.days >= 3 && mu.days < inMonth - 0.5) mu.fullMonth = (mu.used / mu.days) * inMonth;
+  }
+  const events = topUpEvents(photos);
+  for (const e of events) if (e.at.getFullYear() === year) months[e.at.getMonth()].topUps++;
 
   const known = periods.filter((p) => p.used !== null && !p.short);
   const totalUsed = known.reduce((n, p) => n + (p.used ?? 0), 0);
@@ -158,6 +205,8 @@ export function meterUsage(meter: string, photos: MeterPhoto[], year: number): M
     photos,
     periods,
     topUps,
+    events,
+    frequency: frequency(events.filter((e) => e.at.getFullYear() === year)),
     months,
     totalUsed: round(totalUsed),
     coveredDays,
@@ -169,6 +218,105 @@ export function meterUsage(meter: string, photos: MeterPhoto[], year: number): M
     unread: photos.filter((p) => !p.reading).length,
     problems: periods.filter((p) => p.problem).length,
     estimatedDates: photos.filter((p) => p.dateSource === "month").length,
+  };
+}
+
+const DAY = 86_400_000;
+
+/** Groups the photos into top-ups: before / amount / after photos taken within SHORT_HOURS of each other. */
+function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
+  const readings = photos.filter((p) => p.reading && p.reading.kind !== "other");
+  const clusters: MeterPhoto[][] = [];
+  for (const p of readings) {
+    const cur = clusters[clusters.length - 1];
+    if (cur && p.takenAt.getTime() - cur[cur.length - 1].takenAt.getTime() <= SHORT_HOURS * 3_600_000) cur.push(p);
+    else clusters.push([p]);
+  }
+
+  const events: TopUpEvent[] = [];
+  for (const c of clusters) {
+    const kwhOf = (p: MeterPhoto) => p.reading!.kwh;
+    const point = (p: MeterPhoto | undefined) => (p ? { kwh: kwhOf(p), at: p.takenAt } : null);
+    const estimated = c.some((p) => p.dateSource === "month");
+    const tops: MeterPhoto[] = [];
+    for (const p of c) {
+      // A meter screen and a receipt of the same top-up: count it once
+      if (p.reading!.kind === "topup" && !tops.some((t) => Math.abs(kwhOf(t) - kwhOf(p)) < 0.05)) tops.push(p);
+    }
+    let before: MeterPhoto | undefined;
+    let after: MeterPhoto | undefined;
+    let amount: number;
+    let inferred = false;
+    if (tops.length > 0) {
+      const first = c.indexOf(tops[0]);
+      const lastTop = c.indexOf(tops[tops.length - 1]);
+      before = c.slice(0, first).filter((p) => p.reading!.kind === "balance").pop();
+      after = c.slice(lastTop + 1).find((p) => p.reading!.kind === "balance");
+      amount = tops.reduce((n, t) => n + kwhOf(t), 0);
+    } else {
+      // No photo of the amount: the biggest rise between two balance photos is the top-up
+      const bals = c.filter((p) => p.reading!.kind === "balance");
+      let best = -1;
+      for (let i = 0; i + 1 < bals.length; i++) {
+        const rise = kwhOf(bals[i + 1]) - kwhOf(bals[i]);
+        if (rise > 0.05 && (best < 0 || rise > kwhOf(bals[best + 1]) - kwhOf(bals[best]))) best = i;
+      }
+      if (best < 0) continue; // just balance readings, not a top-up
+      before = bals[best];
+      after = bals[best + 1];
+      amount = kwhOf(after) - kwhOf(before);
+      inferred = true;
+    }
+    let problem: string | null = null;
+    if (before && after && !inferred && Math.abs(kwhOf(before) + amount - kwhOf(after)) > TOLERANCE) {
+      problem = `${fmt(kwhOf(before))} + ${fmt(amount)} isn't ${fmt(kwhOf(after))}: check these photos`;
+    }
+    events.push({
+      at: tops[0]?.takenAt ?? after?.takenAt ?? before!.takenAt,
+      before: point(before),
+      amount: round(amount),
+      amountInferred: inferred,
+      after: point(after),
+      sincePrevDays: null,
+      usedSincePrev: null,
+      perDay: null,
+      problem,
+      estimated,
+    });
+  }
+
+  // Between two top-ups: the balance just after the previous one, minus the balance just before this one
+  for (let i = 1; i < events.length; i++) {
+    const prev = events[i - 1];
+    const e = events[i];
+    e.sincePrevDays = (e.at.getTime() - prev.at.getTime()) / DAY;
+    const start = prev.after ?? (prev.before ? { kwh: prev.before.kwh + prev.amount, at: prev.at } : null);
+    if (!start || !e.before) continue;
+    const used = start.kwh - e.before.kwh;
+    if (used < -TOLERANCE) {
+      e.problem ??= `Balance went from ${fmt(start.kwh)} to ${fmt(e.before.kwh)} with no top-up in between: a photo may be missing or misread`;
+      continue;
+    }
+    const days = (e.before.at.getTime() - start.at.getTime()) / DAY;
+    e.usedSincePrev = round(Math.max(0, used));
+    e.perDay = days >= 0.5 ? e.usedSincePrev / days : null;
+  }
+  return events;
+}
+
+function frequency(events: TopUpEvent[]): TopUpFrequency {
+  const gaps = events.map((e) => e.sincePrevDays).filter((d): d is number => d !== null);
+  const avgDays = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
+  const last = events[events.length - 1] ?? null;
+  return {
+    count: events.length,
+    avgDays,
+    minDays: gaps.length ? Math.min(...gaps) : null,
+    maxDays: gaps.length ? Math.max(...gaps) : null,
+    avgAmount: events.length ? events.reduce((n, e) => n + e.amount, 0) / events.length : null,
+    perMonth: avgDays ? 30.44 / avgDays : null,
+    last,
+    nextAround: last && avgDays ? new Date(last.at.getTime() + avgDays * DAY) : null,
   };
 }
 

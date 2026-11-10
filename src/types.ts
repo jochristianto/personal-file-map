@@ -1,7 +1,12 @@
 /** A file in the year folder that matched `YYYYMM Name.ext`. */
 export interface BillFile {
   file: string;
+  /** The bill: the name without its transaction number and photo details ("Klaska PLN 02 Photo 1 Before" → "Klaska PLN"). */
   name: string;
+  /** Everything after YYYYMM, as written. */
+  fullName: string;
+  /** Which payment/top-up of the month this file is about ("02" → 2), or null when the name has no number. */
+  txn: number | null;
   month: number; // 1..12
   ext: string;
   mtime: Date;
@@ -37,6 +42,8 @@ export interface BillRow {
   label: string; // name without the group prefix
   cells: CellState[]; // index 0 = January
   paidMonths: number[];
+  /** Payments/top-ups per month (index 0 = January): distinct transaction numbers among the month's files. */
+  transactions: number[];
   /** From the config: scheduled (expected months) · irregular · unscheduled (not in config / null) */
   pattern: "scheduled" | "irregular" | "unscheduled";
   scheduleLabel: string; // e.g. "quarterly", "from Mar"; "" for plain monthly

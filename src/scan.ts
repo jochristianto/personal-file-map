@@ -110,13 +110,28 @@ export async function scanDirectory(dir: string, year: number, self: string | nu
       ignored.push({ file, reason: `dated ${fileYear}, not ${year}` });
       continue;
     }
-    const name = match[3].replace(/\s+/g, " ").trim();
+    const fullName = match[3].replace(/\s+/g, " ").trim();
+    const { bill, txn } = splitBillName(fullName);
     const stat = await fs.stat(path.join(dir, file));
-    files.push({ file, name, month, ext, mtime: stat.mtime });
+    files.push({ file, name: bill, fullName, txn, month, ext, mtime: stat.mtime });
   }
 
   ignored.sort((a, b) => a.file.localeCompare(b.file));
   return { dir, year, files, ignored };
+}
+
+/**
+ * The bill a file belongs to, and which transaction of the month it is. A 1–2 digit number after the name
+ * numbers the payments or top-ups within a month, and "Photo …" describes the picture, so these are all
+ * the bill "Klaska PLN": "Klaska PLN 01 Photo 1 Before", "Klaska PLN 02 Photo 3 After", "Klaska PLN Photo 2".
+ */
+export function splitBillName(fullName: string): { bill: string; txn: number | null } {
+  const words = fullName.split(" ");
+  for (let i = 1; i < words.length; i++) {
+    if (/^\d{1,2}$/.test(words[i])) return { bill: words.slice(0, i).join(" "), txn: Number(words[i]) };
+    if (/^(photo|foto)$/i.test(words[i])) return { bill: words.slice(0, i).join(" "), txn: null };
+  }
+  return { bill: fullName, txn: null };
 }
 
 const sha1 = (b: Buffer) => createHash("sha1").update(b).digest("hex");

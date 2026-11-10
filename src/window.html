@@ -142,6 +142,8 @@
   .m { position: relative; flex: none; width: 32px; height: 32px; border-radius: 6px; background: var(--off); font-size: 12px; line-height: 32px; text-align: center; color: var(--faint); font-weight: 500; user-select: none; }
   .m.on { background: var(--on); color: var(--card); }
   .m.file::after { content: ""; position: absolute; left: 50%; bottom: -8px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: var(--dot); }
+  .m[data-n]::before { content: attr(data-n); position: absolute; top: -5px; right: -5px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px;
+    background: var(--dot); color: #fff; font-size: 9.5px; font-weight: 700; line-height: 14px; text-align: center; }
   .row-main .months { padding-bottom: 6px; margin-bottom: -6px; } /* room for the file dots */
   .coverage { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .coverage.none { color: var(--amber); }
@@ -275,7 +277,7 @@
           <input type="search" id="filter" placeholder="Filter bills" aria-label="Filter bills">
         </div>
       </div>
-      <p class="help">A name also covers every bill that starts with it: <code>Meter 01</code> covers <code>Meter 01 Photo 1 Before</code>. When several names match, the longest wins; case doesn't matter. A scheduled past month without a file is <em>missing</em>, the current month is <em>due</em>.</p>
+      <p class="help">A number after the name counts the payments or top-ups in a month, and <code>Photo …</code> describes the picture: <code>Klaska PLN 01 Photo 1 Before</code> and <code>Klaska PLN 02 Photo 3 After</code> are both the bill <code>Klaska PLN</code>, with 2 transactions that month (the small number on the month). A name also covers every bill that starts with it; when several names match, the longest wins; case doesn't matter. A scheduled past month without a file is <em>missing</em>, the current month is <em>due</em>.</p>
       <div class="legend">
         <span><i style="background:var(--on)"></i>expected</span>
         <span><i style="background:var(--dot);border-radius:50%;width:6px;height:6px;vertical-align:1px"></i>file found</span>
@@ -322,10 +324,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg>AI
           </span>
         </div>
-        <p class="help">Reads the kWh on photos of a prepaid electricity meter, so the report shows how much you use. Turn on <span class="zap-inline" id="zapHelp"></span> next to the meter's bill (e.g. <code>Meter 01</code>) to mark its photos.</p>
+        <p class="help">Reads the kWh on photos of a prepaid electricity meter, so the report shows how much you use. Turn on <span class="zap-inline" id="zapHelp"></span> next to the meter's bill (e.g. <code>Klaska PLN</code>) to mark its photos.</p>
         <div class="note">Name the photos of each top-up like this:</div>
         <ul class="examples" id="meterExamples"></ul>
-        <p class="help" id="meterNaming">The month (<code>YYYYMM</code>), the meter's name, then anything. Use the original photos, not screenshots of them: the time each photo was taken is read from the file.</p>
+        <p class="help" id="meterNaming">The month (<code>YYYYMM</code>), the meter's name, the top-up's number in that month (<code>01</code>; a second top-up that month is <code>02</code>), then anything. Use the original photos, not screenshots of them: the time each photo was taken is read from the file.</p>
         <div class="field">
           <label for="reader">AI reader</label>
           <select id="reader"></select>
@@ -373,6 +375,7 @@
     <div class="actions">
       <button type="button" class="hidden" id="openPdf">Open PDF</button>
       <button type="button" class="hidden" id="reveal">Show in Finder</button>
+      <button type="button" id="save" disabled title="Save the settings to config.local.json without generating the report (⌘/Ctrl + S)">Save</button>
       <button type="button" class="primary" id="generate" disabled>Generate report</button>
     </div>
   </div>
@@ -398,7 +401,7 @@ let rows = [];             // { id, name, type, every, from, until, months:Set, 
 let savedSnapshot = null;  // what config.local.json holds, to show "unsaved changes"
 let savedKeys = new Set(); // lower-cased keys in config.local.json
 let nextId = 1;
-let busy = false;
+let busy = false;          // "generate" or "save" while one runs
 let lastResult = null;
 let meterCfg = { reader: "off", models: {}, extraBills: [] }; // "meters" minus bills (those live on the rows)
 let meterData = null;      // POST api/meters for the current folder and meter bills
@@ -580,6 +583,7 @@ function render() {
     shown++;
     const covered = coveredBy.get(r.name) || [];
     const fileMonths = new Set(covered.flatMap((b) => b.months));
+    const txnCount = (i) => covered.reduce((n, b) => n + ((b.transactions && b.transactions[i]) || 0), 0);
     const exp = new Set(expected(r));
     const err = rowError(r, dupes);
     const isNew = !savedKeys.has(normKey(r.name).toLowerCase());
@@ -592,7 +596,11 @@ function render() {
       r.type === "raw" ? el("option", { value: "raw", selected: true }, "Invalid value") : null,
       TYPES.map(([v, label, hint]) => el("option", { value: v, title: hint, selected: r.type === v }, label)));
     const strip = el("div", { class: "months", title: "Expected months; a dot means a file was found" },
-      MON.map((m, i) => el("div", { class: "m" + (exp.has(i + 1) ? " on" : "") + (fileMonths.has(i + 1) ? " file" : "") }, m[0])));
+      MON.map((m, i) => {
+        const n = txnCount(i);
+        return el("div", { class: "m" + (exp.has(i + 1) ? " on" : "") + (fileMonths.has(i + 1) ? " file" : ""),
+          dataset: n > 1 ? { n: String(n) } : undefined, title: n > 1 ? `${MON[i]}: ${n} payments or top-ups` : undefined }, m[0]);
+      }));
     const fileCount = covered.reduce((n, b) => n + b.months.length, 0);
     const coverage = !preview || !preview.ok ? el("div", { class: "coverage" }, "")
       : covered.length === 0 ? el("div", { class: "coverage none", title: "Shown under Housekeeping in the report" }, "No matching files")
@@ -681,10 +689,12 @@ function renderStatus() {
   const errors = rows.filter((r) => rowError(r, duplicates())).length;
   const folderBad = !$("folder").value.trim() || (preview && !preview.ok);
   const unsaved = JSON.stringify(payload()) !== savedSnapshot || Object.values(state.keys).some((k) => k.pending);
-  $("generate").disabled = busy;
+  $("generate").disabled = Boolean(busy);
+  $("save").disabled = Boolean(busy) || (state.configExists && !unsaved && !state.configError);
   if (busy) {
     s.className = "status";
-    s.replaceChildren(el("span", { class: "spinner" }), meterSettings().bills.length && meterCfg.reader !== "off" ? "Reading new meter photos and generating the report…" : "Generating the report…");
+    s.replaceChildren(el("span", { class: "spinner" }), busy === "save" ? "Saving…"
+      : meterSettings().bills.length && meterCfg.reader !== "off" ? "Reading new meter photos and generating the report…" : "Generating the report…");
     return;
   }
   if (lastResult && lastResult.error) {
@@ -695,6 +705,11 @@ function renderStatus() {
   s.className = "status";
   if (errors) { s.replaceChildren(el("strong", {}, `${errors} bill${errors === 1 ? " needs" : "s need"} fixing`), " before generating."); return; }
   if (folderBad) { s.replaceChildren(el("strong", {}, "Choose a bills folder"), " that exists."); return; }
+  if (lastResult && lastResult.savedOnly && !unsaved) {
+    s.className = "status ok";
+    s.replaceChildren(el("strong", {}, "Saved to config.local.json. "), "The PDF isn't updated until you generate the report.");
+    return;
+  }
   if (lastResult && lastResult.ok && !unsaved) {
     const r = lastResult;
     s.className = "status ok";
@@ -705,9 +720,9 @@ function renderStatus() {
     return;
   }
   if (!state.configExists) {
-    s.replaceChildren("Nothing is saved yet. ", el("strong", {}, "Generate report"), " saves these settings to config.local.json and creates the PDF.");
+    s.replaceChildren("Nothing is saved yet. ", el("strong", {}, "Save"), " writes these settings to config.local.json; ", el("strong", {}, "Generate report"), " also creates the PDF.");
   } else if (unsaved) {
-    s.replaceChildren(el("strong", {}, "Unsaved changes. "), "They're saved to config.local.json when you generate the report.");
+    s.replaceChildren(el("strong", {}, "Unsaved changes. "), "Click Save, or Generate report to save and update the PDF.");
   } else {
     s.replaceChildren("Settings match config.local.json.");
   }
@@ -773,7 +788,8 @@ function folderChanged() {
   renderStatus();
 }
 
-async function generate() {
+/** Points at the first problem (a bill to fix, a missing folder) and returns false, or true when all is well. */
+function readyToSubmit() {
   const dupes = duplicates();
   const bad = rows.find((r) => rowError(r, dupes));
   if (bad) {
@@ -781,28 +797,53 @@ async function generate() {
     render();
     const t = document.querySelector(`[data-row="${bad.id}"]`);
     if (t) { t.scrollIntoView({ block: "center" }); t.focus(); }
-    return;
+    return false;
   }
   if (!$("folder").value.trim() || (preview && !preview.ok)) {
     $("folder").focus();
-    return;
+    return false;
   }
-  busy = true;
+  return true;
+}
+
+/** Reloads what's on disk after a save, so the rows and "unsaved changes" follow config.local.json. */
+async function reloadSaved() {
+  state = await api("state");
+  $("configError").classList.add("hidden");
+  renderHeader();
+  loadSettings(state.settings);
+  await loadPreview();
+  renderReader();
+}
+
+/** "Save": config.local.json only (settings and any API key typed), no report. */
+async function saveOnly() {
+  if (busy || !readyToSubmit()) return;
+  busy = "save";
+  lastResult = null;
+  renderStatus();
+  try {
+    const r = await api("save", payload());
+    lastResult = r.ok ? { ok: true, savedOnly: true } : r;
+    if (r.ok) await reloadSaved();
+  } catch (e) {
+    lastResult = { ok: false, error: String(e.message || e) };
+  } finally {
+    busy = false;
+  }
+  render();
+}
+
+async function generate() {
+  if (!readyToSubmit()) return;
+  busy = "generate";
   lastResult = null;
   renderStatus();
   const body = payload();
   try {
     const r = await api("generate", body);
     lastResult = r;
-    if (r.ok) {
-      // Reload what's on disk now, so rows and "unsaved changes" follow the saved file
-      state = await api("state");
-      $("configError").classList.add("hidden");
-      renderHeader();
-      loadSettings(state.settings);
-      await loadPreview();
-      renderReader();
-    }
+    if (r.ok) await reloadSaved();
   } catch (e) {
     lastResult = { ok: false, error: String(e.message || e) };
   } finally {
@@ -849,11 +890,11 @@ function renderMeterExamples() {
   const year = preview && preview.ok ? preview.year : now.getFullYear();
   const month = year === now.getFullYear() ? now.getMonth() + 1 : 1;
   const prefix = `${year}${String(month).padStart(2, "0")}`;
-  const meter = meterSettings().bills[0] || "Meter 01";
+  const meter = meterSettings().bills[0] || "Klaska PLN";
   const items = [
-    ["Photo 1 Before", "the credit left, just before topping up"],
-    ["Photo 2 Topup", "the kWh just added: the meter's screen after the token, or the receipt"],
-    ["Photo 3 After", "the credit right after topping up"],
+    ["01 Photo 1 Before", "the credit left, just before topping up"],
+    ["01 Photo 2 Topup", "the kWh just added: the meter's screen after the token, or the receipt"],
+    ["01 Photo 3 After", "the credit right after topping up"],
   ];
   $("meterExamples").replaceChildren(...items.map(([part, what]) => el("li", {}, el("code", {}, `${prefix} ${meter} ${part}.jpg`), what)));
 }
@@ -890,10 +931,10 @@ function renderReader() {
   $("apiKey").placeholder = k.hint ? `•••• ${k.hint}` : `${p.keyPrefix}…`;
   const note = $("keyNote");
   if (k.pending === "set") {
-    note.replaceChildren(`Key ending in ${k.hint} is used now and saved to config.local.json when you generate the report. `,
+    note.replaceChildren(`Key ending in ${k.hint} is used now. Click Save (or Generate report) to keep it in config.local.json. `,
       el("button", { type: "button", class: "linkish", onclick: () => saveKey(undefined) }, k.saved ? "Keep the saved key" : "Remove"));
   } else if (k.pending === "remove") {
-    note.replaceChildren("Removed from config.local.json when you generate the report. ",
+    note.replaceChildren("Removed from config.local.json when you click Save or generate the report. ",
       el("button", { type: "button", class: "linkish", onclick: () => saveKey(undefined) }, "Keep it"));
   } else if (k.saved) {
     note.replaceChildren(`In config.local.json, ending in ${k.hint}. `,
@@ -1019,7 +1060,7 @@ function renderMeters() {
   }
   if (meterData.meters.length === 0) {
     const ex = $("meterExamples").querySelector("code");
-    box.replaceChildren(el("div", { class: "empty" }, `No photos (JPG, PNG or HEIC) of ${bills.join(", ")} in the bills folder yet. Name them like `, el("code", {}, ex ? ex.textContent : "202611 Meter 01 Photo 1 Before.jpg"), " (see Electricity meters)."));
+    box.replaceChildren(el("div", { class: "empty" }, `No photos (JPG, PNG or HEIC) of ${bills.join(", ")} in the bills folder yet. Name them like `, el("code", {}, ex ? ex.textContent : "202611 Klaska PLN 01 Photo 1 Before.jpg"), " (see Electricity meters)."));
     return;
   }
   box.replaceChildren(...meterData.meters.map((m) => {
@@ -1109,6 +1150,7 @@ async function start() {
   $("filter").addEventListener("input", render);
   $("add").addEventListener("click", addRow);
   $("generate").addEventListener("click", generate);
+  $("save").addEventListener("click", saveOnly);
   $("openPdf").addEventListener("click", () => api("open", { target: "pdf" }));
   $("reveal").addEventListener("click", () => api("open", { target: "folder" }));
   $("browse").addEventListener("click", async () => {
@@ -1122,6 +1164,7 @@ async function start() {
   });
   document.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); if (!busy) generate(); }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveOnly(); }
   });
   window.addEventListener("focus", () => {
     if (preview && preview.blocked) loadPreview(); // back from System Settings

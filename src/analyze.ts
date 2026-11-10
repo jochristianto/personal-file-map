@@ -24,9 +24,12 @@ export function analyze(scan: ScanResult, opts: AnalyzeOptions): Report {
   const currentMonth = year < todayYear ? 13 : year > todayYear ? 0 : opts.today.getMonth() + 1;
 
   const byName = new Map<string, Set<number>>();
+  const txns = new Map<string, Set<string>[]>(); // bill → per month, the distinct transaction numbers seen
   for (const f of scan.files) {
     if (!byName.has(f.name)) byName.set(f.name, new Set());
     byName.get(f.name)!.add(f.month);
+    if (!txns.has(f.name)) txns.set(f.name, Array.from({ length: 12 }, () => new Set<string>()));
+    txns.get(f.name)![f.month - 1].add(f.txn === null ? "-" : String(f.txn));
   }
 
   const names = [...byName.keys()];
@@ -82,6 +85,7 @@ export function analyze(scan: ScanResult, opts: AnalyzeOptions): Report {
       label,
       cells,
       paidMonths,
+      transactions: txns.get(name)!.map(countTransactions),
       pattern,
       scheduleLabel: schedule.kind === "months" ? schedule.label : "",
       expectedMonths: schedule.kind === "months" ? schedule.months : [],
@@ -178,6 +182,12 @@ export function analyze(scan: ScanResult, opts: AnalyzeOptions): Report {
       busiestMonth,
     },
   };
+}
+
+/** Distinct transaction numbers in a month; a file without a number (e.g. a check photo) only counts when none has one. */
+export function countTransactions(seen: Set<string>): number {
+  const numbered = [...seen].filter((t) => t !== "-").length;
+  return numbered > 0 ? numbered : seen.size;
 }
 
 function firstWord(name: string): string {

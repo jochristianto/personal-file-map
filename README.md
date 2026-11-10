@@ -50,7 +50,7 @@ Each release lists SHA-256 checksums in `SHA256SUMS.txt` if you want to check yo
 1. Get the app: **`personal-file-map.app`** (macOS) or **`personal-file-map.exe`** (Windows) from the [Releases page](../../releases/latest), see [Download](#download).
 2. Copy it **into the folder with your bills**, e.g. `My Drive/Bills/Monthly Bills/2026`.
 3. **Double-click it.** The settings window opens (see [Settings window](#settings-window)) with every bill it found set to *monthly*. Change the bills that aren't monthly.
-4. Click **Generate report**. Only now is anything written: your settings are saved to `config.local.json` next to the app, and `personal-file-map.output.pdf` is written and opened. Run it whenever you add files; the window opens with your saved settings, and the PDF is overwritten each time. Closing the window quits the app.
+4. Click **Generate report**. Only now is anything written: your settings are saved to `config.local.json` next to the app, and `personal-file-map.output.pdf` is written and opened. (**Save** next to it writes only `config.local.json`, without the report.) Run it whenever you add files; the window opens with your saved settings, and the PDF is overwritten each time. Closing the window quits the app.
 
 For a new year, copy the app and your `config.local.json` into the new year's folder.
 
@@ -69,11 +69,12 @@ YYYYMM Name.ext
 | `Name` | `Internet Payment` | Anything; the same name across months = the same bill |
 | `.ext` | `.pdf` | `pdf`, `png`, `jpg`, `jpeg` or `heic` |
 
-Examples: `202601 Rent.pdf`, `202603 Internet Payment.jpg`, `202604 Meter 01 Photo 1 Before.jpg`.
+Examples: `202601 Rent.pdf`, `202603 Internet Payment.jpg`, `202604 Klaska PLN 01 Photo 1 Before.jpg`.
 
 - Bills that share a **first word** are grouped in the report (`Insurance Car`, `Insurance Health` → *Insurance*).
 - The **year** is taken from the folder name if it's like `2026`, otherwise from the file names.
 - Several files for one bill in one month (e.g. `.pdf` and `.jpg`) count once.
+- **A number after the name counts the payments or top-ups in that month**, and `Photo …` describes the picture: `Klaska PLN 01 Photo 1 Before` and `Klaska PLN 02 Photo 3 After` are both the bill *Klaska PLN*, with 2 transactions that month. The settings window shows the count on the month, and the report's matrix shows a small *2* next to the checkmark. The number is 1 or 2 digits right after the name (`01`, `2`); to keep two similar bills apart, name them without a number there (`Phone Home`, `Phone Work`).
 - Files that don't fit (wrong month like `202600`, a different year, unsupported type, no `YYYYMM` prefix) are skipped and listed under *Housekeeping*.
 
 **The app tidies the folder** the same way the old script did: uppercase extensions are lowercased (`IMG.JPG` → `IMG.jpg`), and `.heic` photos are converted to `.jpg` (the `.heic` is removed afterwards; an existing `.jpg` is never overwritten). Nothing else is modified.
@@ -99,6 +100,7 @@ Every option is set in the window; there's no need to edit files. The bill list 
 - Bills found in the folder that no name covers are listed with a **New** badge as *monthly*, the same thing the app used to add to `config.local.json` by itself. Change them before generating, or leave them.
 - If macOS blocks the folder (e.g. on Google Drive), the message has an **Open Privacy & Security settings** button that opens Files & Folders, and the folder is checked again when you come back to the window.
 - Problems (a bill without a name, a name listed twice, a *Specific months* bill with no month picked, a missing folder) are shown in place, and **Generate report** waits until they're fixed.
+- **Save** (or ⌘/Ctrl + S) writes the settings, and any API key you typed, to `config.local.json` without touching the folder or the PDF. It's enabled while there are unsaved changes.
 - **Generate report** (or ⌘/Ctrl + Enter) saves `config.local.json`, then tidies the folder and writes the PDF exactly as before. Afterwards **Open PDF** and **Show in Finder/Explorer** appear; change something and generate again as often as you like.
 - If `config.local.json` was broken by hand, the window says why and starts from the defaults; generating replaces the file.
 
@@ -107,21 +109,22 @@ Every option is set in the window; there's no need to edit files. The bill list 
 If you have a prepaid ("token") electricity meter, the app can work out how much electricity you use from photos of it. Take a photo of the meter's display **before** you top up, of the **amount added** (the screen right after entering the token, or the receipt), and **after**, and save them like any other bill:
 
 ```
-202610 Meter 01 Photo 1 Before.jpg     shows 72.52   (credit left)
-202610 Meter 01 Photo 2 Topup.jpg      shows 250.00  (kWh just added)
-202610 Meter 01 Photo 3 After.jpg      shows 322.52
+202610 Klaska PLN 01 Photo 1 Before.jpg     shows 72.52   (credit left)
+202610 Klaska PLN 01 Photo 2 Topup.jpg      shows 250.00  (kWh just added)
+202610 Klaska PLN 01 Photo 3 After.jpg      shows 322.52
+202610 Klaska PLN 02 Photo 1 Before.jpg     a second top-up the same month: 02
 ```
 
 The time each photo was taken comes from the photo itself (its EXIF capture date), so keep the original files: a screenshot of a photo or a copy sent through a chat app loses it. Then the electricity used between two top-ups is *balance after the last top-up − balance before this one*, e.g. 328.64 − 72.52 = 256.12 kWh over 32 days = 8.0 kWh a day.
 
 **Setting it up** in the settings window:
 
-1. Click ⚡ next to the meter's bill (e.g. `Meter 01`). Each ⚡ bill is one meter; its JPG, PNG and HEIC files are its photos.
+1. Click ⚡ next to the meter's bill (e.g. `Klaska PLN`). Each ⚡ bill is one meter; its JPG, PNG and HEIC files are its photos.
 2. Under **Electricity meters**, pick an **AI reader**: *Claude (Anthropic)* or *ChatGPT (OpenAI)*, and a **model**. The suggested ones are the cheap models (`claude-haiku-5-5`, `gpt-5.4-mini`); you can type any other model id that can read images.
-3. Paste an **API key** for that provider and click **Save**. *Create a key* opens the provider's key page. You need an account with API credit there; a ChatGPT or Claude subscription alone doesn't include API access. The key works right away and is written to `config.local.json` when you generate the report, like the other settings.
+3. Paste an **API key** for that provider and click **Save**. *Create a key* opens the provider's key page. You need an account with API credit there; a ChatGPT or Claude subscription alone doesn't include API access. The key works right away; to keep it, click **Save** at the bottom of the window (or generate the report), which writes it to `config.local.json` with the other settings.
 4. **Read new photos** reads every photo that has no reading yet and lists what it saw, with the tokens each reading used and what it cost. Check the values against the photos; a wrong digit can be fixed right in the table (or the photo marked *Ignore*). **Generate report** also reads new photos before writing the PDF.
 
-The card shows example file names for the current month and your meter, e.g. `202611 Meter 01 Photo 1 Before.jpg`, `… Photo 2 Topup.jpg`, `… Photo 3 After.jpg`; anything after the meter's name is up to you.
+The card shows example file names for the current month and your meter, e.g. `202611 Klaska PLN 01 Photo 1 Before.jpg`, `… 01 Photo 2 Topup.jpg`, `… 01 Photo 3 After.jpg`. The `01` is the top-up's number in that month (`02` for a second one); what follows is up to you. The app tells the top-ups apart by the times the photos were taken, so the number is for you and for the bill matrix.
 
 **Why an AI model?** The digits are on a 7-segment LCD, often photographed at an angle with glare. The operating system's built-in text recognition gets them wrong (on the sample photos it read `78.64` as `7864` and `328.64` as `32884`), so reading is done by the vision model you choose. Each photo is read **once**.
 
@@ -137,7 +140,7 @@ The card shows example file names for the current month and your meter, e.g. `20
 | The readings (kWh, what the photo shows, which model read it, tokens and cost, your corrections) | `personal-file-map.readings.json` in the bills folder. Edit it by hand if you like: set `"edited": true` on an entry you change. Delete an entry to have that photo read again. A photo whose content changes is read again; a renamed one isn't. |
 | The API keys | in `config.local.json` next to the app, under `"meters"` → `"apiKeys"`, in plain text. **If that folder is synced (Google Drive, iCloud, Dropbox) or shared, the key goes with it**, and anyone who can open the file can use your API credit; keep it private, and remove the key (or revoke it at the provider) before sharing the folder. The settings window never shows a saved key, only its last 4 characters. If none is set, `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` from the environment are used. |
 
-| A log of every AI request | `logs/` next to the app: one Markdown file per request, named by time, provider and photo (e.g. `logs/2026-11-10 17-39-57-244 anthropic 202610 Meter 01 Photo 1 Before.jpg.md`). It shows the result, the tokens and cost, the instructions, the request (with the image replaced by its size) and the full response, or the error. The API key isn't in it. Delete old logs whenever you like. |
+| A log of every AI request | `logs/` next to the app: one Markdown file per request, named by time, provider and photo (e.g. `logs/2026-11-10 17-39-57-244 anthropic 202610 Klaska PLN 01 Photo 1 Before.jpg.md`). It shows the result, the tokens and cost, the instructions, the request (with the image replaced by its size) and the full response, or the error. The API key isn't in it. Delete old logs whenever you like. |
 
 With the reader set to **Off** nothing is sent; readings already saved and values you type in are still used.
 
@@ -151,7 +154,11 @@ With the reader set to **Off** nothing is sent; readings already saved and value
 - HEIC photos keep their capture date when the app converts them to JPG.
 - Each year's folder is counted on its own: usage from the last photo of December to the first of January isn't included.
 
-The report gets an **Electricity** page per meter (used this year, kWh per day, topped up, balance and when it runs out, a per-month chart, each stretch between readings) and a table of all its readings.
+The report gets, per meter:
+
+- **An Electricity page:** used this year, kWh per day, number of top-ups and the balance; a **kWh used per month** table (kWh used, per day, days measured, the full month estimated when only part of it is covered, kWh topped up and the number of top-ups); and **How often you top up** (how many top-ups, usually every how many days and the range, top-ups a month, the usual amount, the last one, when the next one usually comes and when the credit runs out, plus a timeline of the year).
+- **A top-ups table:** one row per top-up with the date, days since the last top-up, the credit before, the kWh topped up, the credit after, the kWh used since the last top-up and per day. A last row shows the latest photo since then. A missing photo of a top-up is worked out from the others and marked.
+- **A readings table:** every photo with what it shows, its kWh, which model read it, and the tokens and cost.
 
 ## Configuration
 
@@ -163,13 +170,13 @@ The settings live in **`config.local.json`**, next to the app. The window reads 
   "bills": {
     "Rent": "monthly",
     "Insurance Car": "quarterly",
-    "Meter 02": "irregular",
+    "Klaska PLN": "irregular",
     "Property Tax": { "months": [1] },
     "Mortgage": { "every": 1, "from": 3 },
     "Charity": null
   },
   "meters": {
-    "bills": ["Meter 01"],
+    "bills": ["Klaska PLN"],
     "reader": "anthropic",
     "models": { "anthropic": "claude-haiku-5-5" },
     "apiKeys": { "anthropic": "sk-ant-…" }
@@ -195,7 +202,7 @@ Which months each bill is expected. Nothing is guessed: a bill is only flagged a
 | `"irregular"` | none: shown with checkmarks, never flagged |
 | `null` | none: shown as *Not scheduled* |
 
-- A key matches the bill with that exact name **or every bill that starts with it**: `"Meter 01"` covers `Meter 01 Photo 1 Before`, `Meter 01 Photo 2 After`, … When several keys match, the longest wins (`"Internet Payment"` beats `"Internet"`). Matching ignores case.
+- A key matches the bill with that exact name **or every bill that starts with it**: `"Insurance"` covers `Insurance Car` and `Insurance Health`. (A bill's name is the part before a transaction number or `Photo`, see [Naming your files](#naming-your-files), so `"Klaska PLN"` covers `Klaska PLN 01 Photo 1 Before` and `Klaska PLN 02 …`.) When several keys match, the longest wins (`"Internet Payment"` beats `"Internet"`). Matching ignores case.
 - A scheduled **past** month without a file is **missing**; the **current** month without a file is **due**.
 - **New bills are added for you**: the window lists bills that no key covers yet as *monthly* (badge **New**), and they're saved when you generate. A bill whose file appears after the window scanned the folder is still appended as `"monthly"` and mentioned under *Housekeeping*.
 - Keys that match no bill are listed under *Housekeeping*.
@@ -206,7 +213,7 @@ Optional; only there once you've used ⚡ or chosen a reader. See [Electricity m
 
 | Key | Value |
 |---|---|
-| `"bills"` | bill names whose photos are meter photos; each is one meter, matched like `bills` keys (`"Meter 01"` covers `Meter 01 Photo 1 Before`) |
+| `"bills"` | bill names whose photos are meter photos; each is one meter, matched like `bills` keys (`"Klaska PLN"` covers `Klaska PLN 01 Photo 1 Before`) |
 | `"reader"` | `"off"` (default), `"anthropic"` or `"openai"` |
 | `"models"` | the model per provider, e.g. `{ "anthropic": "claude-haiku-5-5", "openai": "gpt-5.4-mini" }`; a missing one uses the suggested model |
 | `"apiKeys"` | the API key per provider, e.g. `{ "anthropic": "sk-ant-…" }`. Saved here by the settings window; see the note on synced folders under [Electricity meters](#electricity-meters) |
