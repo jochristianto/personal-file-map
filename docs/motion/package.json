@@ -1,0 +1,14 @@
+{
+  "name": "personal-file-map-motion",
+  "private": true,
+  "description": "The README's demo video: one HTML file seeked frame by frame, rendered with Playwright and ffmpeg. Not part of the app.",
+  "type": "module",
+  "scripts": {
+    "demo-data": "node demo/make-demo.mjs",
+    "beats": "node render.mjs --beats",
+    "render": "node render.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
