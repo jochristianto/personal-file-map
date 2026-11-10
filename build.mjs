@@ -26,7 +26,7 @@ try {
 }
 
 async function run() {
-  // 1. One self-contained JS file (fonts, HEIC decoder and config.default.json inlined)
+  // 1. One self-contained JS file (fonts, HEIC decoder, settings page and config.default.json inlined)
   const bundle = path.join(work, "bills-overview.cjs");
   await build({
     entryPoints: [path.join(here, "src/main.ts")],
@@ -35,7 +35,7 @@ async function run() {
     platform: "node",
     target: "node22",
     format: "cjs",
-    loader: { ".woff": "binary" },
+    loader: { ".woff": "binary", ".html": "text" },
     // pdfkit's ESM build reads import.meta.url at load time; give it a real URL in CJS
     define: { "import.meta.url": "__importMetaUrl" },
     banner: { js: 'const __importMetaUrl = require("url").pathToFileURL(__filename).href;' },

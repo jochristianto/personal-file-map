@@ -71,18 +71,64 @@ export function mergeConfigs(defaults: PartialConfig, local: PartialConfig | nul
  * copy of the built-in config.default.json. Existing entries, other keys and their order are kept.
  */
 export function addBillsToLocalConfig(dir: string, billNames: string[]): PartialConfig {
-  const file = path.join(dir, LOCAL_CONFIG_NAME);
-  let raw: Record<string, unknown>;
-  try {
-    raw = JSON.parse(fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "")) as Record<string, unknown>;
-  } catch {
-    raw = structuredClone(embeddedDefaults) as Record<string, unknown>; // missing (bad JSON was already reported)
-  }
+  const raw = readRawOrTemplate(dir);
   const bills = { ...((raw.bills as Record<string, ScheduleSpec> | undefined) ?? {}) };
   const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
   for (const name of [...billNames].sort(collator.compare)) bills[name] = "monthly";
   raw.bills = bills;
-  fs.writeFileSync(file, JSON.stringify(raw, null, 2) + "\n");
+  return writeRaw(dir, raw);
+}
+
+/** What the settings window edits: "folder" and "bills" (as ordered entries) of config.local.json. */
+export interface Settings {
+  folder: string;
+  bills: [string, ScheduleSpec][];
+}
+
+/**
+ * The settings the window starts from: config.local.json if it exists, otherwise the built-in template.
+ * A broken config.local.json doesn't stop the window: it starts from the template and reports the problem.
+ */
+export function loadSettings(dir: string): { settings: Settings; exists: boolean; error: string | null } {
+  const exists = fs.existsSync(path.join(dir, LOCAL_CONFIG_NAME));
+  let local: PartialConfig | null = null;
+  let error: string | null = null;
+  try {
+    local = loadLocal(dir);
+  } catch (err) {
+    error = (err as Error).message;
+  }
+  const source = local ?? loadDefaults();
+  return {
+    settings: { folder: source.folder ?? DEFAULT_FOLDER, bills: Object.entries(source.bills ?? {}) },
+    exists,
+    error,
+  };
+}
+
+/**
+ * Writes "folder" and "bills" into config.local.json in `dir` (created from the built-in template if
+ * missing or unreadable). Other keys, such as "_help", and their order are kept.
+ */
+export function saveSettings(dir: string, folder: string, bills: Record<string, ScheduleSpec>): PartialConfig {
+  const raw = readRawOrTemplate(dir);
+  raw.folder = folder;
+  raw.bills = bills;
+  return writeRaw(dir, raw);
+}
+
+function readRawOrTemplate(dir: string): Record<string, unknown> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, LOCAL_CONFIG_NAME), "utf8").replace(/^\uFEFF/, ""));
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  } catch {
+    /* missing or not JSON: start from the template */
+  }
+  return structuredClone(embeddedDefaults) as Record<string, unknown>;
+}
+
+function writeRaw(dir: string, raw: Record<string, unknown>): PartialConfig {
+  fs.writeFileSync(path.join(dir, LOCAL_CONFIG_NAME), JSON.stringify(raw, null, 2) + "\n");
   return validate(raw, LOCAL_CONFIG_NAME);
 }
 

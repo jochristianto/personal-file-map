@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bills Overview</title>
+<style>
+  @font-face { font-family: Inter; font-weight: 400; src: url(fonts/inter-400.woff) format("woff"); }
+  @font-face { font-family: Inter; font-weight: 500; src: url(fonts/inter-500.woff) format("woff"); }
+  @font-face { font-family: Inter; font-weight: 600; src: url(fonts/inter-600.woff) format("woff"); }
+
+  /* shadcn/ui "zinc", same tokens as the PDF */
+  :root {
+    --bg: #fafafa; --card: #ffffff; --fg: #09090b; --fg2: #27272a; --muted: #71717a; --faint: #a1a1aa;
+    --border: #e4e4e7; --line: #f4f4f5; --input: #d4d4d8; --hover: #f4f4f5;
+    --primary: #18181b; --primary-fg: #fafafa; --ring: #a1a1aa;
+    --on: #3f3f46; --off: #f4f4f5; --dot: #16a34a;
+    --green-bg: #dcfce7; --green: #15803d; --amber-bg: #fef3c7; --amber: #b45309; --amber-border: #fde68a;
+    --rose-bg: #ffe4e6; --rose: #be123c; --rose-border: #fecdd3;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #09090b; --card: #121214; --fg: #fafafa; --fg2: #e4e4e7; --muted: #a1a1aa; --faint: #71717a;
+      --border: #27272a; --line: #1c1c1f; --input: #3f3f46; --hover: #1c1c1f;
+      --primary: #fafafa; --primary-fg: #18181b; --ring: #71717a;
+      --on: #d4d4d8; --off: #27272a; --dot: #22c55e;
+      --green-bg: #052e16; --green: #4ade80; --amber-bg: #2d1f05; --amber: #fbbf24; --amber-border: #78350f;
+      --rose-bg: #2a0a12; --rose: #fb7185; --rose-border: #881337;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font: 14px/1.45 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--fg); -webkit-font-smoothing: antialiased;
+    padding-bottom: 88px;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 28px 24px 0; }
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+  h2 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 2px; word-break: break-all; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; flex-wrap: wrap; }
+  .help { color: var(--muted); font-size: 13px; margin: 2px 0 14px; }
+  code { font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--line); padding: 1px 5px; border-radius: 4px; }
+
+  input, select, button { font: inherit; color: inherit; }
+  input[type=text], input[type=number], input[type=search], select {
+    height: 34px; border: 1px solid var(--input); border-radius: 8px; background: var(--card); padding: 0 10px; min-width: 0;
+  }
+  select { padding-right: 6px; }
+  input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+  input.invalid, select.invalid { border-color: var(--rose); }
+  button {
+    height: 34px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--input); background: var(--card);
+    cursor: pointer; font-weight: 500; white-space: nowrap;
+  }
+  button:hover { background: var(--hover); }
+  button:disabled { opacity: .55; cursor: default; }
+  button.primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+  button.primary:hover { opacity: .9; background: var(--primary); }
+  button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  button.ghost:hover { background: var(--hover); color: var(--fg); }
+  button.icon { width: 32px; padding: 0; display: inline-grid; place-items: center; }
+
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+  .chip.green { background: var(--green-bg); color: var(--green); border-color: transparent; }
+  .chip.amber { background: var(--amber-bg); color: var(--amber); border-color: transparent; }
+  .badge { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 5px; background: var(--amber-bg); color: var(--amber); text-transform: uppercase; letter-spacing: .03em; }
+
+  .folder-row { display: flex; gap: 8px; }
+  .folder-row input { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  .folder-info { margin-top: 10px; font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .folder-info .path { word-break: break-all; color: var(--fg2); }
+  .folder-info.error { color: var(--rose); white-space: pre-wrap; }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; }
+  .toolbar input[type=search] { width: 200px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); align-items: center; margin: 0 0 6px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+
+  .rows { border-top: 1px solid var(--border); }
+  .row { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row-main { display: grid; grid-template-columns: minmax(160px, 1fr) 170px 192px 128px 32px; gap: 10px; align-items: center; }
+  .name-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .name-cell input { flex: 1; width: 100%; }
+  .row-detail { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; padding-left: 2px; font-size: 13px; color: var(--muted); }
+  .row-detail input[type=number] { width: 64px; }
+  .row-detail select { height: 30px; }
+  .row-error { margin-top: 6px; font-size: 12.5px; color: var(--rose); }
+  .months { display: flex; gap: 3px; }
+  .m { position: relative; width: 13px; height: 22px; border-radius: 3px; background: var(--off); font-size: 9px; line-height: 22px; text-align: center; color: var(--faint); font-weight: 500; user-select: none; }
+  .m.on { background: var(--on); color: var(--card); }
+  .m.file::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--dot); }
+  .coverage { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .coverage.none { color: var(--amber); }
+  .pick { display: flex; gap: 4px; flex-wrap: wrap; }
+  .pick button { height: 28px; padding: 0 8px; font-size: 12px; border-radius: 6px; min-width: 40px; }
+  .pick button.on { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+  .empty { color: var(--muted); padding: 22px 0 8px; text-align: center; font-size: 13px; }
+  .add-row { margin-top: 12px; display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .note { font-size: 12.5px; color: var(--muted); }
+
+  .banner { border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; font-size: 13px; white-space: pre-wrap; border: 1px solid; }
+  .banner.error { background: var(--rose-bg); color: var(--rose); border-color: var(--rose-border); }
+  .banner.warn { background: var(--amber-bg); color: var(--amber); border-color: var(--amber-border); }
+
+  footer {
+    position: fixed; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--card) 92%, transparent);
+    backdrop-filter: blur(8px); border-top: 1px solid var(--border);
+  }
+  .footer-in { max-width: 980px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .status { font-size: 13px; color: var(--muted); min-width: 0; }
+  .status strong { color: var(--fg); font-weight: 600; }
+  .status.ok strong { color: var(--green); }
+  .status.err { color: var(--rose); white-space: pre-wrap; }
+  .actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; display: inline-block; vertical-align: -2px; margin-right: 8px; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hidden { display: none !important; }
+
+  @media (max-width: 820px) {
+    .row-main { grid-template-columns: 1fr 150px 32px; }
+    .row-main .months, .row-main .coverage { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Bills Overview</h1>
+      <div class="sub" id="appDir"></div>
+    </div>
+    <span class="chip" id="configChip"></span>
+  </header>
+
+  <div class="banner error hidden" id="configError"></div>
+  <div class="banner error hidden" id="fatal"></div>
+
+  <section class="card">
+    <div class="card-head"><h2>Bills folder</h2></div>
+    <p class="help">Where your <code>YYYYMM Name.ext</code> files are. <code>./</code> is the app's own folder; a relative path, an absolute path or <code>~/…</code> also work. The PDF is saved into this folder.</p>
+    <div class="folder-row">
+      <input type="text" id="folder" spellcheck="false" autocomplete="off" aria-label="Bills folder">
+      <button type="button" id="browse">Browse…</button>
+    </div>
+    <div class="folder-info" id="folderInfo">Looking…</div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Bills and when they're due <span class="note" id="billCount"></span></h2>
+      <div class="toolbar">
+        <input type="search" id="filter" placeholder="Filter bills" aria-label="Filter bills">
+      </div>
+    </div>
+    <p class="help">A name also covers every bill that starts with it: <code>Meter 01</code> covers <code>Meter 01 Photo 1 Before</code>. When several names match, the longest wins; case doesn't matter. A scheduled past month without a file is <em>missing</em>, the current month is <em>due</em>.</p>
+    <div class="legend">
+      <span><i style="background:var(--on)"></i>expected</span>
+      <span><i style="background:var(--dot);border-radius:50%;width:6px;height:6px;vertical-align:1px"></i>file found</span>
+      <span><span class="badge">New</span> not in config.local.json yet, added as monthly like before</span>
+    </div>
+    <div class="rows" id="rows"></div>
+    <div class="add-row">
+      <button type="button" id="add">+ Add bill</button>
+      <span class="note" id="autoNote"></span>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="footer-in">
+    <div class="status" id="status">Loading…</div>
+    <div class="actions">
+      <button type="button" class="hidden" id="openPdf">Open PDF</button>
+      <button type="button" class="hidden" id="reveal">Show in Finder</button>
+      <button type="button" class="primary" id="generate" disabled>Generate report</button>
+    </div>
+  </div>
+</footer>
+
+<script>
+"use strict";
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const TYPES = [
+  ["monthly", "Monthly", "Every month"],
+  ["quarterly", "Quarterly", "Jan, Apr, Jul, Oct"],
+  ["every", "Every N months", "Every 2, 3, … months, optionally from / until a month"],
+  ["months", "Specific months", "Exactly the months you pick"],
+  ["irregular", "Irregular", "Shown with checkmarks, never flagged as due or missing"],
+  ["none", "Not scheduled", "Shown as Not scheduled, never flagged"],
+];
+const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+const $ = (id) => document.getElementById(id);
+
+let state = null;          // GET api/state
+let preview = null;        // GET api/preview for the current folder
+let rows = [];             // { id, name, type, every, from, until, months:Set, original, dirty, auto, raw }
+let savedSnapshot = null;  // what config.local.json holds, to show "unsaved changes"
+let savedKeys = new Set(); // lower-cased keys in config.local.json
+let nextId = 1;
+let busy = false;
+let lastResult = null;
+
+// ── API ────────────────────────────────────────────────────────────────────
+async function api(path, body) {
+  const res = await fetch("api/" + path, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Schedules ↔ rows ───────────────────────────────────────────────────────
+function rowFromSpec(name, spec, extra) {
+  const r = { id: nextId++, name, type: "monthly", every: 2, from: 1, until: 12, months: new Set(), original: spec, dirty: false, auto: false, raw: false, ...extra };
+  if (spec === "monthly" || spec === "quarterly" || spec === "irregular") r.type = spec;
+  else if (spec === null) r.type = "none";
+  else if (spec && typeof spec === "object" && !Array.isArray(spec) && (spec.months !== undefined || spec.every !== undefined)) {
+    if (spec.from !== undefined) r.from = spec.from;
+    if (spec.until !== undefined) r.until = spec.until;
+    if (spec.months !== undefined) {
+      r.type = "months";
+      if (Array.isArray(spec.months)) r.months = new Set(spec.months);
+    } else {
+      r.type = "every";
+      r.every = spec.every;
+    }
+  } else {
+    r.type = "raw"; // something the JSON file allowed but isn't a valid schedule: shown, must be fixed
+    r.raw = true;
+  }
+  return r;
+}
+
+function specOf(r) {
+  if (!r.dirty) return r.original;
+  const range = {};
+  if (r.from !== 1) range.from = r.from;
+  if (r.until !== 12) range.until = r.until;
+  switch (r.type) {
+    case "monthly": case "quarterly": case "irregular": return r.type;
+    case "none": return null;
+    case "every": return { every: r.every, ...range };
+    case "months": return { months: [...r.months].sort((a, b) => a - b), ...range };
+    default: return r.original;
+  }
+}
+
+const isMonth = (m) => Number.isInteger(m) && m >= 1 && m <= 12;
+function expected(r) {
+  const spec = specOf(r);
+  if (spec === "monthly") return range(1, 12, 1);
+  if (spec === "quarterly") return [1, 4, 7, 10];
+  if (!spec || typeof spec !== "object") return [];
+  const from = spec.from ?? 1, until = spec.until ?? 12;
+  if (!isMonth(from) || !isMonth(until) || from > until) return [];
+  if (spec.months !== undefined) return Array.isArray(spec.months) ? spec.months.filter((m) => isMonth(m) && m >= from && m <= until) : [];
+  if (isMonth(spec.every)) return range(from, until, spec.every);
+  return [];
+}
+function range(a, b, step) { const out = []; for (let m = a; m <= b; m += step) out.push(m); return out; }
+
+function rowError(r, dupes) {
+  const key = normKey(r.name);
+  if (!key) return "Give this bill a name.";
+  if (dupes.has(key.toLowerCase())) return "This name is listed twice.";
+  if (r.type === "raw") return `Not a valid schedule: ${JSON.stringify(r.original)}. Choose one from the list.`;
+  if (r.type === "every" && !(Number.isInteger(r.every) && r.every >= 1 && r.every <= 12)) return "“Every” must be a whole number of months, 1–12.";
+  if ((r.type === "every" || r.type === "months") && r.from > r.until) return "“From” must be before “until”.";
+  if (r.type === "months" && r.months.size === 0) return "Pick at least one month.";
+  if (r.type === "months" && expected(r).length === 0) return "None of the picked months is between “from” and “until”.";
+  if (!r.dirty && (r.type === "every" || r.type === "months")) {
+    const o = r.original;
+    for (const k of ["from", "until"]) if (o[k] !== undefined && !isMonth(o[k])) return `“${k}” must be a month 1–12.`;
+    if (r.type === "months" && !(Array.isArray(o.months) && o.months.length && o.months.every(isMonth))) return "“months” must be a list of months 1–12.";
+  }
+  return null;
+}
+const normKey = (s) => s.trim().replace(/\s+/g, " ");
+function duplicates() {
+  const seen = new Set(), dupes = new Set();
+  for (const r of rows) {
+    const k = normKey(r.name).toLowerCase();
+    if (!k) continue;
+    if (seen.has(k)) dupes.add(k);
+    seen.add(k);
+  }
+  return dupes;
+}
+
+/** Exact name, otherwise the longest key the name starts with (followed by a space). Same as the app. */
+function matchKey(name, keys) {
+  const n = name.toLowerCase();
+  let best = null;
+  for (const key of keys) {
+    const k = key.trim().replace(/\s+/g, " ").toLowerCase();
+    if (!k) continue;
+    if (n === k) return key;
+    if (n.startsWith(k + " ") && (!best || k.length > best.trim().length)) best = key;
+  }
+  return best;
+}
+
+/**
+ * Bills in the folder that no name covers are listed as "New" monthly rows, the same thing the app used to
+ * write into config.local.json by itself. Untouched ones come and go as the folder or names change.
+ */
+function syncAutoRows() {
+  const found = preview && preview.ok ? preview.bills.map((b) => b.name) : [];
+  const keys = rows.filter((r) => !r.auto).map((r) => r.name).concat(state.defaultBills);
+  const uncovered = found.filter((n) => matchKey(n, keys) === null);
+  const keep = new Set(uncovered);
+  const have = new Set(rows.filter((r) => r.auto).map((r) => r.name));
+  rows = rows.filter((r) => !r.auto || keep.has(r.name));
+  // Rows never move once shown; newly uncovered bills go at the end
+  for (const n of uncovered.filter((x) => !have.has(x)).sort(collator.compare)) rows.push(rowFromSpec(n, "monthly", { auto: true }));
+}
+
+function payload() {
+  return { folder: $("folder").value.trim(), bills: rows.map((r) => [normKey(r.name), specOf(r)]) };
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function el(tag, props, ...children) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "dataset") Object.assign(e.dataset, v);
+    else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) e.append(c);
+  return e;
+}
+function monthSelect(r, field) {
+  const s = el("select", { dataset: { row: r.id, field }, "aria-label": field, onchange: (e) => edit(r, { [field]: Number(e.target.value) }) },
+    MON.map((m, i) => el("option", { value: i + 1, selected: r[field] === i + 1 }, m)));
+  if (r.from > r.until) s.classList.add("invalid");
+  return s;
+}
+
+function render() {
+  const keys = rows.map((r) => r.name).concat(state.defaultBills);
+  const found = preview && preview.ok ? preview.bills : [];
+  const coveredBy = new Map(); // row name → found bills
+  for (const b of found) {
+    const k = matchKey(b.name, keys);
+    if (k === null) continue;
+    if (!coveredBy.has(k)) coveredBy.set(k, []);
+    coveredBy.get(k).push(b);
+  }
+  const dupes = duplicates();
+  const q = $("filter").value.trim().toLowerCase();
+
+  // Keep focus and caret across the re-render
+  const a = document.activeElement;
+  const focus = a && a.dataset && a.dataset.row ? { row: a.dataset.row, field: a.dataset.field, start: a.selectionStart, end: a.selectionEnd } : null;
+
+  const list = $("rows");
+  list.replaceChildren();
+  let shown = 0;
+  for (const r of rows) {
+    if (q && !r.name.toLowerCase().includes(q)) continue;
+    shown++;
+    const covered = coveredBy.get(r.name) || [];
+    const fileMonths = new Set(covered.flatMap((b) => b.months));
+    const exp = new Set(expected(r));
+    const err = rowError(r, dupes);
+    const isNew = !savedKeys.has(normKey(r.name).toLowerCase());
+
+    const nameInput = el("input", { type: "text", value: r.name, spellcheck: "false", placeholder: "Bill name, e.g. Rent", "aria-label": "Bill name",
+      dataset: { row: r.id, field: "name" }, class: err && (err.startsWith("Give") || err.includes("twice")) ? "invalid" : "",
+      oninput: (e) => edit(r, { name: e.target.value }) });
+    const typeSelect = el("select", { "aria-label": "Schedule", title: (TYPES.find((t) => t[0] === r.type) || [])[2], dataset: { row: r.id, field: "type" }, class: r.type === "raw" ? "invalid" : "",
+      onchange: (e) => edit(r, { type: e.target.value }) },
+      r.type === "raw" ? el("option", { value: "raw", selected: true }, "Invalid value") : null,
+      TYPES.map(([v, label, hint]) => el("option", { value: v, title: hint, selected: r.type === v }, label)));
+    const strip = el("div", { class: "months", title: "Expected months; a dot means a file was found" },
+      MON.map((m, i) => el("div", { class: "m" + (exp.has(i + 1) ? " on" : "") + (fileMonths.has(i + 1) ? " file" : "") }, m[0])));
+    const fileCount = covered.reduce((n, b) => n + b.months.length, 0);
+    const coverage = !preview || !preview.ok ? el("div", { class: "coverage" }, "")
+      : covered.length === 0 ? el("div", { class: "coverage none", title: "Shown under Housekeeping in the report" }, "No matching files")
+      : el("div", { class: "coverage", title: covered.map((b) => b.name).join("\n") },
+          covered.length === 1 && normKey(covered[0].name).toLowerCase() === normKey(r.name).toLowerCase()
+            ? `${fileCount} month${fileCount === 1 ? "" : "s"} with files`
+            : `${covered.length} bill${covered.length === 1 ? "" : "s"} · ${fileCount} file month${fileCount === 1 ? "" : "s"}`);
+    const del = el("button", { type: "button", class: "ghost icon", title: "Remove", "aria-label": `Remove ${r.name || "bill"}`, onclick: () => remove(r) }, "✕");
+
+    const main = el("div", { class: "row-main" },
+      el("div", { class: "name-cell" }, nameInput, isNew ? el("span", { class: "badge", title: "Not in config.local.json yet" }, "New") : null),
+      typeSelect, strip, coverage, del);
+
+    let detail = null;
+    if (r.type === "every") {
+      detail = el("div", { class: "row-detail" }, "every",
+        el("input", { type: "number", min: 1, max: 12, step: 1, value: r.every, "aria-label": "Every how many months", dataset: { row: r.id, field: "every" },
+          class: Number.isInteger(r.every) && r.every >= 1 && r.every <= 12 ? "" : "invalid",
+          oninput: (e) => edit(r, { every: e.target.value === "" ? NaN : Number(e.target.value) }) }),
+        "months, from", monthSelect(r, "from"), "until", monthSelect(r, "until"));
+    } else if (r.type === "months") {
+      detail = el("div", { class: "row-detail" },
+        el("div", { class: "pick" }, MON.map((m, i) => el("button", { type: "button", class: r.months.has(i + 1) ? "on" : "", "aria-pressed": r.months.has(i + 1) ? "true" : "false",
+          onclick: () => { const s = new Set(r.months); s.has(i + 1) ? s.delete(i + 1) : s.add(i + 1); edit(r, { months: s }); } }, m))),
+        el("span", {}, "from"), monthSelect(r, "from"), "until", monthSelect(r, "until"));
+    }
+    list.append(el("div", { class: "row" }, main, detail, err ? el("div", { class: "row-error" }, err) : null));
+  }
+  if (rows.length === 0) list.append(el("div", { class: "empty" }, "No bills yet. Add one, or choose a folder that has bill files."));
+  else if (shown === 0) list.append(el("div", { class: "empty" }, "No bills match the filter."));
+
+  if (focus) {
+    const t = list.querySelector(`[data-row="${focus.row}"][data-field="${focus.field}"]`);
+    if (t) {
+      t.focus();
+      try { if (focus.start !== null && focus.start !== undefined) t.setSelectionRange(focus.start, focus.end); } catch {}
+    }
+  }
+
+  $("billCount").textContent = rows.length ? `· ${rows.length}` : "";
+  const autoCount = rows.filter((r) => r.auto).length;
+  $("autoNote").textContent = autoCount
+    ? `${autoCount} bill${autoCount === 1 ? "" : "s"} found in the folder ${autoCount === 1 ? "wasn't" : "weren't"} listed yet and ${autoCount === 1 ? "was" : "were"} added as monthly.`
+    : "";
+  renderStatus();
+}
+
+function renderHeader() {
+  $("appDir").textContent = state.configFile;
+  const chip = $("configChip");
+  chip.textContent = state.configError ? "config.local.json has an error" : state.configExists ? "config.local.json" : "New: not saved yet";
+  chip.className = "chip " + (state.configExists && !state.configError ? "green" : "amber");
+}
+
+function renderFolderInfo() {
+  const info = $("folderInfo");
+  info.className = "folder-info";
+  if (!preview) { info.textContent = "Looking…"; return; }
+  if (!preview.ok) { info.classList.add("error"); info.textContent = preview.error; return; }
+  const n = preview.bills.length;
+  info.replaceChildren(
+    el("span", { class: "path" }, preview.dir),
+    el("span", {}, "·"),
+    el("span", {}, `${preview.year} · ${preview.files} file${preview.files === 1 ? "" : "s"} · ${n} bill${n === 1 ? "" : "s"}` +
+      (preview.skipped ? ` · ${preview.skipped} skipped (listed under Housekeeping)` : "")));
+}
+
+function renderStatus() {
+  const s = $("status");
+  const errors = rows.filter((r) => rowError(r, duplicates())).length;
+  const folderBad = !$("folder").value.trim() || (preview && !preview.ok);
+  const unsaved = JSON.stringify(payload()) !== savedSnapshot;
+  $("generate").disabled = busy;
+  if (busy) {
+    s.className = "status";
+    s.replaceChildren(el("span", { class: "spinner" }), "Generating the report…");
+    return;
+  }
+  if (lastResult && lastResult.error) {
+    s.className = "status err";
+    s.textContent = lastResult.error;
+    return;
+  }
+  s.className = "status";
+  if (errors) { s.replaceChildren(el("strong", {}, `${errors} bill${errors === 1 ? " needs" : "s need"} fixing`), " before generating."); return; }
+  if (folderBad) { s.replaceChildren(el("strong", {}, "Choose a bills folder"), " that exists."); return; }
+  if (lastResult && lastResult.ok && !unsaved) {
+    const r = lastResult;
+    s.className = "status ok";
+    s.replaceChildren(el("strong", {}, "Report saved. "),
+      `${r.bills} bills · ${r.files} files · ${r.due} due this month · ${r.missing} missing` + (r.added ? ` · ${r.added} new bill${r.added === 1 ? "" : "s"} added` : ""));
+    return;
+  }
+  if (!state.configExists) {
+    s.replaceChildren("Nothing is saved yet. ", el("strong", {}, "Generate report"), " saves these settings to config.local.json and creates the PDF.");
+  } else if (unsaved) {
+    s.replaceChildren(el("strong", {}, "Unsaved changes. "), "They're saved to config.local.json when you generate the report.");
+  } else {
+    s.replaceChildren("Settings match config.local.json.");
+  }
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+function edit(r, changes) {
+  const scheduleChange = Object.keys(changes).some((k) => k !== "name");
+  if (changes.type === "months" && r.months.size === 0) {
+    const before = expected(r); // start from what the previous schedule expected, or January
+    changes.months = new Set(before.length > 0 && before.length < 12 ? before : [1]);
+  }
+  if (changes.type === "every" && !(Number.isInteger(r.every) && r.every >= 1 && r.every <= 12)) changes.every = 2;
+  Object.assign(r, changes);
+  if (scheduleChange) r.dirty = true;
+  r.auto = false; // touched: it's the user's now
+  if (lastResult && lastResult.error) lastResult = null;
+  syncAutoRows();
+  render();
+}
+
+function remove(r) {
+  rows = rows.filter((x) => x !== r);
+  syncAutoRows();
+  render();
+}
+
+function addRow() {
+  const r = rowFromSpec("", "monthly");
+  r.dirty = true;
+  rows.push(r);
+  $("filter").value = "";
+  render();
+  const input = document.querySelector(`[data-row="${r.id}"][data-field="name"]`);
+  if (input) { input.scrollIntoView({ block: "center" }); input.focus(); }
+}
+
+let previewSeq = 0;
+async function loadPreview() {
+  const seq = ++previewSeq;
+  const folder = $("folder").value.trim();
+  try {
+    const p = await api("preview?folder=" + encodeURIComponent(folder || "./"));
+    if (seq !== previewSeq) return;
+    preview = p;
+  } catch (e) {
+    if (seq !== previewSeq) return;
+    preview = { ok: false, error: String(e.message || e) };
+  }
+  renderFolderInfo();
+  syncAutoRows();
+  render();
+}
+let previewTimer = null;
+function folderChanged() {
+  if (lastResult && lastResult.error) lastResult = null;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(loadPreview, 300);
+  renderStatus();
+}
+
+async function generate() {
+  const dupes = duplicates();
+  const bad = rows.find((r) => rowError(r, dupes));
+  if (bad) {
+    $("filter").value = "";
+    render();
+    const t = document.querySelector(`[data-row="${bad.id}"]`);
+    if (t) { t.scrollIntoView({ block: "center" }); t.focus(); }
+    return;
+  }
+  if (!$("folder").value.trim() || (preview && !preview.ok)) {
+    $("folder").focus();
+    return;
+  }
+  busy = true;
+  lastResult = null;
+  renderStatus();
+  const body = payload();
+  try {
+    const r = await api("generate", body);
+    lastResult = r;
+    if (r.ok) {
+      // Reload what's on disk now, so rows and "unsaved changes" follow the saved file
+      state = await api("state");
+      $("configError").classList.add("hidden");
+      renderHeader();
+      loadSettings(state.settings);
+      await loadPreview();
+    }
+  } catch (e) {
+    lastResult = { ok: false, error: String(e.message || e) };
+  } finally {
+    busy = false;
+  }
+  $("openPdf").classList.toggle("hidden", !(lastResult && lastResult.ok));
+  $("reveal").classList.toggle("hidden", !(lastResult && lastResult.ok));
+  render();
+}
+
+function loadSettings(settings) {
+  $("folder").value = settings.folder;
+  rows = settings.bills.map(([k, v]) => rowFromSpec(k, v));
+  savedKeys = new Set(state.configExists ? settings.bills.map(([k]) => normKey(k).toLowerCase()) : []);
+  savedSnapshot = state.configExists ? JSON.stringify(payload()) : null;
+}
+
+// ── Start ──────────────────────────────────────────────────────────────────
+async function start() {
+  try {
+    state = await api("state");
+  } catch (e) {
+    $("fatal").textContent = "Couldn't load the settings: " + (e.message || e);
+    $("fatal").classList.remove("hidden");
+    $("status").textContent = "";
+    return;
+  }
+  document.title = state.title;
+  renderHeader();
+  if (state.configError) {
+    $("configError").textContent = state.configError.replace(/\n\nFix it and run again\.$/, "") +
+      "\n\nThe settings below start from the defaults. Generating the report replaces config.local.json with them.";
+    $("configError").classList.remove("hidden");
+  }
+  $("reveal").textContent = state.platform === "win32" ? "Show in Explorer" : state.platform === "darwin" ? "Show in Finder" : "Show in folder";
+  loadSettings(state.settings);
+  render();
+  await loadPreview();
+
+  $("folder").addEventListener("input", folderChanged);
+  $("filter").addEventListener("input", render);
+  $("add").addEventListener("click", addRow);
+  $("generate").addEventListener("click", generate);
+  $("openPdf").addEventListener("click", () => api("open", { target: "pdf" }));
+  $("reveal").addEventListener("click", () => api("open", { target: "folder" }));
+  $("browse").addEventListener("click", async () => {
+    $("browse").disabled = true;
+    try {
+      const r = await api("browse", { folder: $("folder").value.trim() });
+      if (r.folder) { $("folder").value = r.folder; folderChanged(); }
+    } finally {
+      $("browse").disabled = false;
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); if (!busy) generate(); }
+  });
+  window.addEventListener("beforeunload", (e) => {
+    if (busy) { e.preventDefault(); e.returnValue = ""; }
+  });
+}
+
+// Open while the window is: the app quits a few seconds after this connection goes away.
+new EventSource("api/events");
+start();
+</script>
+</body>
+</html>

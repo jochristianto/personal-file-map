@@ -8,3 +8,9 @@ declare module "*.woff" {
   const data: Uint8Array;
   export default data;
 }
+
+// esbuild inlines the settings window page as a string (loader: text)
+declare module "*.html" {
+  const html: string;
+  export default html;
+}

@@ -1,6 +1,6 @@
 {
   "_help": [
-    "Bills Overview settings for this folder. Created from the app's built-in defaults; any bill found that isn't listed yet is added as \"monthly\". Adjust as needed: your entries are never changed.",
+    "Bills Overview settings for this folder, edited in the settings window that opens when you double-click the app. Created from the app's built-in defaults; any bill found that isn't listed yet is added as \"monthly\".",
     "\"folder\": where the bill files are, relative to this file. \"./\" = this folder. Also accepts \"./samples\", \"../2026\", an absolute path, or \"~/...\". The PDF (bills-overview.output.pdf) is written there.",
     "\"bills\": which months each bill is expected. Bills not listed (or null) are shown but never flagged.",
     "Values: \"monthly\", \"quarterly\" (Jan/Apr/Jul/Oct), \"irregular\", null, {\"months\": [1, 7]}, {\"every\": 2, \"from\": 3, \"until\": 12}.",
