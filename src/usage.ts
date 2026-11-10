@@ -1,97 +1,110 @@
 import type { MeterPhoto } from "./meters";
 
 /**
- * Electricity used, from a prepaid meter's readings:
+ * Electricity used, from a prepaid meter's top-ups. Usage is only measured from one top-up to the next:
  *
- *   used between two balance readings = earlier balance + kWh topped up in between − later balance
+ *   used between two top-ups = credit just after the earlier one − credit just before the later one
  *
- * A top-up is a photo of the amount just added (or its receipt). When there's none but the balance went up
- * within a few hours (before/after photos of a top-up), the difference is taken as the top-up. Anything
- * that doesn't add up is flagged instead of guessed.
+ * That's exact in kWh whatever the dates. Days, and so kWh a day, need a real capture time at both ends:
+ * a photo without one only tells the month it's from (the file name), not the day. Over a run of top-ups,
+ * the kWh in between add up exactly, so the daily rate is measured between the top-ups whose time is known,
+ * however many undated top-ups lie in between. Nothing is split into calendar months.
  */
 
-export interface Period {
-  from: Date;
-  to: Date;
-  startKwh: number;
-  endKwh: number;
-  toppedUp: number;
-  /** null: unknown (balance rose with no top-up recorded, or the readings contradict each other). */
-  used: number | null;
-  days: number;
-  perDay: number | null;
-  /** Under SHORT_HOURS: the before/after photos of one top-up, not a stretch of usage. */
-  short: boolean;
-  /** A date is only estimated (no capture time in the photo). */
-  estimated: boolean;
-  problem: string | null;
-}
-
-export interface TopUp {
-  at: Date;
+export interface Reading {
   kwh: number;
-  file: string | null;
-  /** Worked out from before/after balances, no photo of the amount. */
-  inferred: boolean;
-}
-
-export interface MonthUsage {
-  used: number | null; // null: no period covers this month
-  days: number; // days of the month covered by known usage
-  /** The whole month at the measured rate, when readings cover only part of it (at least 3 days). */
-  fullMonth: number | null;
-  toppedUp: number;
-  topUps: number;
+  at: Date;
 }
 
 /**
- * One top-up with the photos around it, merged: the balance just before, the kWh added, the balance just
- * after. Photos taken within a few hours of each other belong to the same top-up.
+ * One top-up with the photos around it, merged: the credit just before, the kWh added, the credit just
+ * after. Its photos are the Before / Input / After of one "#N" of the month, taken within a few hours.
  */
 export interface TopUpEvent {
-  /** When the top-up happened: the top-up photo's time, else the after photo's, else the before photo's. */
+  /**
+   * When it happened: the photos' capture time. Without one (`estimated`), worked out from the kWh used
+   * since the dated top-ups around it, kept inside the file's month: only good for placing it on a timeline.
+   */
   at: Date;
-  before: { kwh: number; at: Date } | null;
+  /** No capture time: only the month is known. */
+  estimated: boolean;
+  /** "#2" in the file names → 2. */
+  txn: number | null;
+  before: Reading | null;
   amount: number;
   /** No photo of the amount: worked out as after − before. */
   amountInferred: boolean;
-  after: { kwh: number; at: Date } | null;
-  /** Days since the previous top-up (null for the first one). */
-  sincePrevDays: number | null;
-  /** kWh used from just after the previous top-up to just before this one. */
+  after: Reading | null;
+  /** Credit just after the top-up: the after photo, else before + amount. */
+  credit: number | null;
+  /** kWh used from just after the previous top-up to just before this one (null for the first one). */
   usedSincePrev: number | null;
+  /** Days since the previous top-up: only when both have a capture time. */
+  sincePrevDays: number | null;
   perDay: number | null;
   problem: string | null;
-  estimated: boolean;
 }
 
-/** How often the meter is topped up, from the top-ups of the year. */
+/** kWh a day, measured between two dated points with only known usage in between. */
+export interface Rate {
+  perDay: number;
+  used: number;
+  days: number;
+  from: Date;
+  to: Date;
+}
+
+/** Since the last top-up, up to the latest photo of the credit left. */
+export interface SinceLast {
+  used: number;
+  days: number | null;
+  perDay: number | null;
+  at: Date;
+}
+
+/** How often the meter is topped up and when the next one is due, from past top-ups. */
 export interface TopUpFrequency {
+  /** Top-ups in the report's year. */
   count: number;
+  /** Average days between top-ups, from the first to the last one with a capture time. */
   avgDays: number | null;
-  minDays: number | null;
-  maxDays: number | null;
-  avgAmount: number | null;
   perMonth: number | null;
+  avgAmount: number | null;
+  /** Average kWh used from one top-up to the next. */
+  avgUsed: number | null;
+  /** Credit left when you usually top up (median of the "before" readings). */
+  usualBefore: number | null;
   last: TopUpEvent | null;
-  /** The last top-up plus the usual interval. */
-  nextAround: Date | null;
+  /** When the credit is down to `usualBefore`, at the average rate. */
+  next: Date | null;
+  /** The same at the most recent rate, when that differs. */
+  nextRecent: Date | null;
+}
+
+/** A moment that may only be known to the month. */
+export interface Point {
+  at: Date;
+  estimated: boolean;
 }
 
 export interface MeterUsage {
   meter: string;
   photos: MeterPhoto[];
-  periods: Period[];
-  topUps: TopUp[];
   events: TopUpEvent[];
+  sinceLast: SinceLast | null;
   frequency: TopUpFrequency;
-  months: MonthUsage[]; // index 0 = January
+  /** kWh used between the first top-up and the latest photo (known stretches only). */
   totalUsed: number;
-  coveredDays: number;
-  perDay: number | null;
-  /** Rate of the latest period of at least a few days, for the "runs out" estimate. */
-  recentPerDay: number | null;
-  balance: { kwh: number; at: Date } | null;
+  cycles: number;
+  /** The first and last point of `totalUsed`: a top-up or the latest photo. */
+  usedFrom: Point | null;
+  usedTo: Point | null;
+  /** Over everything measurable. */
+  rate: Rate | null;
+  /** Over the latest stretch of at least a week between dated photos, when it's not the same as `rate`. */
+  recent: Rate | null;
+  balance: { kwh: number; at: Date; estimated: boolean } | null;
+  /** When the credit at the latest photo is used up, at the average rate. */
   runsOut: Date | null;
   totalToppedUp: number;
   unread: number;
@@ -112,136 +125,108 @@ export function kindOf(p: MeterPhoto): "balance" | "topup" | "other" | null {
 
 const SHORT_HOURS = 6;
 const TOLERANCE = 0.5; // kWh: rounding and a few minutes of use between photos
+const DAY = 86_400_000;
+const MIN_RECENT_DAYS = 7;
 
 export function meterUsage(meter: string, photos: MeterPhoto[], year: number): MeterUsage {
-  const periods: Period[] = [];
-  const topUps: TopUp[] = [];
-  let last: { kwh: number; at: Date; estimated: boolean } | null = null;
-  let pending: TopUp[] = [];
-
-  const addTopUp = (t: TopUp) => {
-    // A meter screen and a receipt of the same top-up between two balances: count it once
-    if (pending.some((p) => Math.abs(p.kwh - t.kwh) < 0.05)) return;
-    pending.push(t);
-  };
-
-  for (const p of photos) {
-    const r = p.reading;
-    const kind = kindOf(p);
-    if (!r || kind === "other") continue;
-    if (kind === "topup") {
-      addTopUp({ at: p.takenAt, kwh: r.kwh, file: p.file, inferred: false });
-      continue;
-    }
-    const estimated = p.dateSource === "month";
-    if (last) {
-      const added = pending.reduce((n, t) => n + t.kwh, 0);
-      const hours = (p.takenAt.getTime() - last.at.getTime()) / 3_600_000;
-      const short = hours < SHORT_HOURS;
-      let used: number | null = last.kwh + added - r.kwh;
-      let problem: string | null = null;
-      if (added === 0 && r.kwh > last.kwh + 0.05) {
-        if (short) {
-          // Before/after photos of a top-up without a photo of the amount
-          pending.push({ at: p.takenAt, kwh: round(r.kwh - last.kwh), file: null, inferred: true });
-          used = 0;
-        } else {
-          used = null;
-          problem = "Balance went up but there's no top-up photo, so usage is unknown";
-        }
-      } else if (used < -TOLERANCE) {
-        used = null;
-        problem = `Readings don't add up (${fmt(last.kwh)} + ${fmt(added)} topped up, then ${fmt(r.kwh)}): check them`;
-      }
-      if (used !== null) used = Math.max(0, round(used));
-      const days = Math.max(0, hours / 24);
-      periods.push({
-        from: last.at,
-        to: p.takenAt,
-        startKwh: last.kwh,
-        endKwh: r.kwh,
-        toppedUp: round(pending.reduce((n, t) => n + t.kwh, 0)),
-        used,
-        days,
-        perDay: used !== null && days >= 0.5 ? used / days : null,
-        short,
-        estimated: estimated || last.estimated,
-        problem,
-      });
-    }
-    topUps.push(...pending);
-    pending = [];
-    last = { kwh: r.kwh, at: p.takenAt, estimated };
-  }
-  topUps.push(...pending); // top-ups after the latest balance photo
-
-  const months: MonthUsage[] = Array.from({ length: 12 }, () => ({ used: null, days: 0, fullMonth: null, toppedUp: 0, topUps: 0 }));
-  for (const t of topUps) if (t.at.getFullYear() === year) months[t.at.getMonth()].toppedUp += t.kwh;
-  for (const pr of periods) {
-    if (pr.used === null || pr.short) continue;
-    const span = pr.to.getTime() - pr.from.getTime();
-    if (span <= 0) continue;
-    // Spread the period's usage over the months it covers, in proportion to time
-    for (let m = 0; m < 12; m++) {
-      const start = Math.max(pr.from.getTime(), new Date(year, m, 1).getTime());
-      const end = Math.min(pr.to.getTime(), new Date(year, m + 1, 1).getTime());
-      if (end <= start) continue;
-      const share = (end - start) / span;
-      months[m].used = (months[m].used ?? 0) + pr.used * share;
-      months[m].days += (end - start) / 86_400_000;
-    }
-  }
-
-  for (let m = 0; m < 12; m++) {
-    const mu = months[m];
-    const inMonth = new Date(year, m + 1, 0).getDate();
-    if (mu.used !== null && mu.days >= 3 && mu.days < inMonth - 0.5) mu.fullMonth = (mu.used / mu.days) * inMonth;
-  }
   const events = topUpEvents(photos);
-  for (const e of events) if (e.at.getFullYear() === year) months[e.at.getMonth()].topUps++;
+  const anchors = placeEvents(events);
 
-  const known = periods.filter((p) => p.used !== null && !p.short);
-  const totalUsed = known.reduce((n, p) => n + (p.used ?? 0), 0);
-  const coveredDays = known.reduce((n, p) => n + p.days, 0);
-  const perDay = coveredDays >= 1 ? totalUsed / coveredDays : null;
-  const recent = [...known].reverse().find((p) => p.days >= 3 && p.perDay !== null);
-  const recentPerDay = recent?.perDay ?? perDay;
+  // The latest photo of the credit left, plus any top-up photographed after it
+  const read = photos.filter((p) => p.reading && kindOf(p) !== "other");
+  const lastBal = [...read].reverse().find((p) => kindOf(p) === "balance") ?? null;
+  let balance: MeterUsage["balance"] = null;
+  if (lastBal) {
+    const added = read.filter((p) => kindOf(p) === "topup" && p.takenAt > lastBal.takenAt).reduce((n, p) => n + p.reading!.kwh, 0);
+    const estimated = lastBal.dateSource === "month";
+    const lastEv = events[events.length - 1];
+    // An undated photo of the last top-up: use the top-up's worked-out time rather than the 15th
+    const at = estimated && lastEv?.estimated && lastEv.after?.kwh === lastBal.reading!.kwh ? lastEv.at : lastBal.takenAt;
+    balance = { kwh: round(lastBal.reading!.kwh + added), at, estimated };
+  }
 
-  const afterLast = last ? topUps.filter((t) => t.at > last!.at && !t.inferred).reduce((n, t) => n + t.kwh, 0) : 0;
-  const balance = last ? { kwh: round(last.kwh + afterLast), at: last.at } : null;
-  const runsOut =
-    balance && recentPerDay && recentPerDay > 0 ? new Date(balance.at.getTime() + (balance.kwh / recentPerDay) * 86_400_000) : null;
+  // Since the last top-up, to the latest photo of the credit left
+  const last = events[events.length - 1] ?? null;
+  let sinceLast: SinceLast | null = null;
+  if (last && last.credit !== null && balance && balance.at.getTime() - last.at.getTime() > SHORT_HOURS * 3_600_000) {
+    const used = last.credit - balance.kwh;
+    if (used >= -TOLERANCE) {
+      const dated = !last.estimated && !balance.estimated;
+      const days = dated ? (balance.at.getTime() - last.at.getTime()) / DAY : null;
+      sinceLast = { used: round(Math.max(0, used)), days, perDay: days !== null && days >= 0.5 ? Math.max(0, used) / days : null, at: balance.at };
+      const end = anchors[anchors.length - 1]; // the last top-up, as it's dated
+      if (dated && end) anchors.push({ chain: end.chain, c: end.c + Math.max(0, used), at: balance.at });
+    }
+  }
+  const { rate, recent } = rates(anchors);
+
+  const known = events.filter((e) => e.usedSincePrev !== null);
+  const totalUsed = known.reduce((n, e) => n + e.usedSincePrev!, 0) + (sinceLast?.used ?? 0);
+  const first = events.find((e) => e.credit !== null);
+
+  // Days between top-ups: from the first to the last dated one, divided by the top-ups in between
+  const datedIdx = events.map((e, i) => (e.estimated ? -1 : i)).filter((i) => i >= 0);
+  let avgDays: number | null = null;
+  if (datedIdx.length >= 2) {
+    const a = datedIdx[0];
+    const b = datedIdx[datedIdx.length - 1];
+    avgDays = (events[b].at.getTime() - events[a].at.getTime()) / DAY / (b - a);
+  }
+  const befores = events.map((e) => e.before?.kwh).filter((k): k is number => k !== undefined);
+  const usualBefore = befores.length ? median(befores) : null;
+  const inYear = events.filter((e) => e.at.getFullYear() === year);
+  const when = (r: Rate | null, to: number) =>
+    balance && r && r.perDay > 0 ? new Date(balance.at.getTime() + (Math.max(0, balance.kwh - to) / r.perDay) * DAY) : null;
+  const next = usualBefore !== null ? when(rate, usualBefore) : null;
 
   return {
     meter,
     photos,
-    periods,
-    topUps,
     events,
-    frequency: frequency(events.filter((e) => e.at.getFullYear() === year)),
-    months,
+    sinceLast,
+    frequency: {
+      count: inYear.length,
+      avgDays,
+      perMonth: avgDays ? 30.44 / avgDays : null,
+      avgAmount: events.length ? events.reduce((n, e) => n + e.amount, 0) / events.length : null,
+      avgUsed: known.length ? known.reduce((n, e) => n + e.usedSincePrev!, 0) / known.length : null,
+      usualBefore,
+      last,
+      next,
+      nextRecent: usualBefore !== null && recent ? when(recent, usualBefore) : null,
+    },
     totalUsed: round(totalUsed),
-    coveredDays,
-    perDay,
-    recentPerDay,
+    cycles: known.length,
+    usedFrom: first && known.length ? { at: first.at, estimated: first.estimated } : null,
+    usedTo: sinceLast && balance ? { at: balance.at, estimated: balance.estimated } : known.length && last ? { at: last.at, estimated: last.estimated } : null,
+    rate,
+    recent,
     balance,
-    runsOut,
-    totalToppedUp: round(topUps.filter((t) => t.at.getFullYear() === year).reduce((n, t) => n + t.kwh, 0)),
+    runsOut: when(rate, 0),
+    totalToppedUp: round(inYear.reduce((n, e) => n + e.amount, 0)),
     unread: photos.filter((p) => !p.reading).length,
-    problems: periods.filter((p) => p.problem).length,
+    problems: events.filter((e) => e.problem).length,
     estimatedDates: photos.filter((p) => p.dateSource === "month").length,
   };
 }
 
-const DAY = 86_400_000;
-
-/** Groups the photos into top-ups: before / amount / after photos taken within SHORT_HOURS of each other. */
+/**
+ * Groups the photos into top-ups. A new top-up starts after a gap of more than SHORT_HOURS, at another
+ * "#N" of the month, or at a Before photo after the Input / After of the previous one: photos without a
+ * capture time all sit on the 15th, seconds apart, so time alone can't tell #1 from #2.
+ */
 function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
   const readings = photos.filter((p) => p.reading && kindOf(p) !== "other");
   const clusters: MeterPhoto[][] = [];
   for (const p of readings) {
     const cur = clusters[clusters.length - 1];
-    if (cur && p.takenAt.getTime() - cur[cur.length - 1].takenAt.getTime() <= SHORT_HOURS * 3_600_000) cur.push(p);
+    const prev = cur?.[cur.length - 1];
+    const same =
+      prev &&
+      p.takenAt.getTime() - prev.takenAt.getTime() <= SHORT_HOURS * 3_600_000 &&
+      !(p.txn !== null && prev.txn !== null && p.txn !== prev.txn) &&
+      !(p.label === "before" && cur.some((q) => q.label !== "before"));
+    if (same) cur.push(p);
     else clusters.push([p]);
   }
 
@@ -249,7 +234,6 @@ function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
   for (const c of clusters) {
     const kwhOf = (p: MeterPhoto) => p.reading!.kwh;
     const point = (p: MeterPhoto | undefined) => (p ? { kwh: kwhOf(p), at: p.takenAt } : null);
-    const estimated = c.some((p) => p.dateSource === "month");
     const tops: MeterPhoto[] = [];
     for (const p of c) {
       // A meter screen and a receipt of the same top-up: count it once
@@ -285,51 +269,124 @@ function topUpEvents(photos: MeterPhoto[]): TopUpEvent[] {
     }
     events.push({
       at: tops[0]?.takenAt ?? after?.takenAt ?? before!.takenAt,
+      estimated: c.some((p) => p.dateSource === "month"),
+      txn: c[0].txn,
       before: point(before),
       amount: round(amount),
       amountInferred: inferred,
       after: point(after),
-      sincePrevDays: null,
+      credit: after ? kwhOf(after) : before ? round(kwhOf(before) + amount) : null,
       usedSincePrev: null,
+      sincePrevDays: null,
       perDay: null,
       problem,
-      estimated,
     });
   }
 
-  // Between two top-ups: the balance just after the previous one, minus the balance just before this one
+  // Between two top-ups: the credit just after the previous one, minus the credit just before this one
   for (let i = 1; i < events.length; i++) {
     const prev = events[i - 1];
     const e = events[i];
-    e.sincePrevDays = (e.at.getTime() - prev.at.getTime()) / DAY;
-    const start = prev.after ?? (prev.before ? { kwh: prev.before.kwh + prev.amount, at: prev.at } : null);
-    if (!start || !e.before) continue;
-    const used = start.kwh - e.before.kwh;
+    if (prev.credit === null || !e.before) continue;
+    const used = prev.credit - e.before.kwh;
     if (used < -TOLERANCE) {
-      e.problem ??= `Balance went from ${fmt(start.kwh)} to ${fmt(e.before.kwh)} with no top-up in between: a photo may be missing or misread`;
+      e.problem ??= `Credit went from ${fmt(prev.credit)} to ${fmt(e.before.kwh)} with no top-up in between: a photo may be missing or misread`;
       continue;
     }
-    const days = (e.before.at.getTime() - start.at.getTime()) / DAY;
     e.usedSincePrev = round(Math.max(0, used));
-    e.perDay = days >= 0.5 ? e.usedSincePrev / days : null;
   }
   return events;
 }
 
-function frequency(events: TopUpEvent[]): TopUpFrequency {
-  const gaps = events.map((e) => e.sincePrevDays).filter((d): d is number => d !== null);
-  const avgDays = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
-  const last = events[events.length - 1] ?? null;
-  return {
-    count: events.length,
-    avgDays,
-    minDays: gaps.length ? Math.min(...gaps) : null,
-    maxDays: gaps.length ? Math.max(...gaps) : null,
-    avgAmount: events.length ? events.reduce((n, e) => n + e.amount, 0) / events.length : null,
-    perMonth: avgDays ? 30.44 / avgDays : null,
-    last,
-    nextAround: last && avgDays ? new Date(last.at.getTime() + avgDays * DAY) : null,
-  };
+/** A dated point on the running total of kWh used, within a run of top-ups with known usage in between. */
+interface Anchor {
+  chain: number;
+  c: number;
+  at: Date;
+}
+
+/**
+ * Days and kWh a day for top-ups that are both dated, and a likely time for undated ones: in proportion to
+ * the kWh used between the dated top-ups around them, kept inside their month. Returns the dated points.
+ */
+function placeEvents(events: TopUpEvent[]): Anchor[] {
+  let chain = 0;
+  let c = 0;
+  const cum = events.map((e, i) => {
+    if (i > 0) {
+      if (e.usedSincePrev === null) {
+        chain++;
+        c = 0;
+      } else c += e.usedSincePrev;
+    }
+    return { chain, c };
+  });
+
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    if (!e.estimated) continue;
+    const month = new Date(e.at.getFullYear(), e.at.getMonth(), 1).getTime();
+    const monthEnd = new Date(e.at.getFullYear(), e.at.getMonth() + 1, 1).getTime() - 60_000;
+    let a = -1;
+    let b = -1;
+    for (let j = i - 1; j >= 0 && cum[j].chain === cum[i].chain; j--) if (!events[j].estimated) { a = j; break; }
+    for (let j = i + 1; j < events.length && cum[j].chain === cum[i].chain; j++) if (!events[j].estimated) { b = j; break; }
+    if (a < 0 || b < 0 || cum[b].c <= cum[a].c) continue; // stays mid-month
+    const ta = events[a].at.getTime();
+    const tb = events[b].at.getTime();
+    const t = ta + ((cum[i].c - cum[a].c) / (cum[b].c - cum[a].c)) * (tb - ta);
+    const at = new Date(Math.min(monthEnd, Math.max(month, t)));
+    e.at = at;
+    if (e.before) e.before.at = at;
+    if (e.after) e.after.at = at;
+  }
+
+  for (let i = 1; i < events.length; i++) {
+    const prev = events[i - 1];
+    const e = events[i];
+    if (prev.estimated || e.estimated) continue;
+    e.sincePrevDays = (e.at.getTime() - prev.at.getTime()) / DAY;
+    if (e.usedSincePrev === null || !e.before) continue;
+    const days = (e.before.at.getTime() - (prev.after ?? prev.before ?? { at: prev.at }).at.getTime()) / DAY;
+    e.perDay = days >= 0.5 ? e.usedSincePrev / days : null;
+  }
+
+  return events.map((e, i) => ({ ...cum[i], at: e.at, e })).filter((x) => !x.e.estimated).map(({ chain, c, at }) => ({ chain, c, at }));
+}
+
+/** The average rate over every run of dated points, and the most recent one over at least a week. */
+function rates(anchors: Anchor[]): { rate: Rate | null; recent: Rate | null } {
+  const chains = new Map<number, Anchor[]>();
+  for (const a of anchors) chains.set(a.chain, [...(chains.get(a.chain) ?? []), a]);
+  let used = 0;
+  let ms = 0;
+  let from: Date | null = null;
+  let to: Date | null = null;
+  let recent: Rate | null = null;
+  for (const list of chains.values()) {
+    const a = list[0];
+    const b = list[list.length - 1];
+    const span = b.at.getTime() - a.at.getTime();
+    if (span < DAY) continue;
+    used += b.c - a.c;
+    ms += span;
+    from ??= a.at;
+    to = b.at;
+    // Back from the latest point to the first one at least a week earlier
+    let k = list.length - 2;
+    while (k > 0 && b.at.getTime() - list[k].at.getTime() < MIN_RECENT_DAYS * DAY) k--;
+    const days = (b.at.getTime() - list[k].at.getTime()) / DAY;
+    recent = { perDay: (b.c - list[k].c) / days, used: round(b.c - list[k].c), days, from: list[k].at, to: b.at };
+  }
+  const rate = ms > 0 && from && to ? { perDay: used / (ms / DAY), used: round(used), days: ms / DAY, from, to } : null;
+  if (rate && recent && recent.from.getTime() === rate.from.getTime()) recent = null;
+  return { rate, recent };
+}
+
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;

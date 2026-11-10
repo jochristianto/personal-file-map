@@ -1078,7 +1078,7 @@ const fmtWhen = (iso) => new Date(iso).toLocaleString(undefined, { day: "numeric
 const DATE_MARKS = { file: "*", month: "†" };
 const DATE_NOTES = {
   file: "No capture date in the photo, so the file's date is used.",
-  month: "No capture date in the photo and the file's date is in another month, so the 15th is assumed. Usage around it is approximate; use the original photo (not a screenshot or a copy sent through a chat app) to get the real time.",
+  month: "No capture date in the photo and the file's date is in another month, so only the month is known: usage between top-ups is still exact, but days and kWh a day can't be measured around it; use the original photo (not a screenshot or a copy sent through a chat app) to get the real time.",
 };
 function dateNotes(photos) {
   const used = ["file", "month"].filter((s) => photos.some((p) => p.dateSource === s));
@@ -1148,10 +1148,10 @@ function renderMeters() {
   }
   box.replaceChildren(...meterData.meters.map((m) => {
     const stats = [];
-    if (m.coveredDays >= 1) stats.push(el("span", {}, el("strong", {}, `${fmtKwh(m.totalUsed, 0)} kWh`), ` used over ${Math.round(m.coveredDays)} days`));
-    if (m.perDay !== null) stats.push(el("span", {}, " · ", el("strong", {}, `${fmtKwh(m.perDay)} kWh`), " a day"));
-    if (m.balance) stats.push(el("span", {}, ` · ${fmtKwh(m.balance.kwh)} kWh left on ${fmtDay(m.balance.at)}` + (m.runsOut ? `, lasts until about ${fmtDay(m.runsOut)}` : "")));
-    if (stats.length === 0) stats.push(el("span", {}, "Usage shows once there are two balance readings a few days apart."));
+    if (m.cycles) stats.push(el("span", {}, el("strong", {}, `${fmtKwh(m.totalUsed, 0)} kWh`), ` used over ${m.cycles} top-up${m.cycles === 1 ? "" : "s"}`));
+    if (m.perDay !== null) stats.push(el("span", {}, " · ", el("strong", {}, `${fmtKwh(m.perDay)} kWh`), ` a day (over ${Math.round(m.rateDays)} days)`));
+    if (m.balance) stats.push(el("span", {}, ` · ${fmtKwh(m.balance.kwh)} kWh left on ${fmtDay(m.balance.at)}` + (m.nextTopUp ? `, next top-up around ${fmtDay(m.nextTopUp)}` : m.runsOut ? `, lasts until about ${fmtDay(m.runsOut)}` : "")));
+    if (stats.length === 0) stats.push(el("span", {}, "Usage shows once there are two top-ups with before and after photos."));
     if (m.ai.photos) stats.push(el("div", { title: "Tokens and cost of every AI reading of this meter's photos so far (prices as of the app's release)" }, `AI: ${m.ai.photos} photo${m.ai.photos === 1 ? "" : "s"} · ${aiSummary(m.ai)}`));
 
     const body = m.photos.map((ph) => {
@@ -1187,7 +1187,7 @@ function renderMeters() {
           el("th", { class: "num", title: "Tokens in / out / cache, and the cost in USD" }, "Tokens in/out/cache", el("small", { style: "display:block;font-weight:500" }, "USD")))),
         el("tbody", {}, ...body))),
       dateNotes(m.photos),
-      m.problems.length ? el("div", { class: "problems" }, ...m.problems.map((p) => el("div", {}, `${fmtDay(p.from)} – ${fmtDay(p.to)}: ${p.problem}`))) : null);
+      m.problems.length ? el("div", { class: "problems" }, ...m.problems.map((p) => el("div", {}, `Top-up ${p.estimated ? new Date(p.at).toLocaleDateString("en-US", { month: "short" }) : fmtDay(p.at)}: ${p.problem}`))) : null);
   }));
 }
 

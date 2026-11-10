@@ -6,7 +6,7 @@ import interBold from "@fontsource/inter/files/inter-latin-700-normal.woff";
 import { usd } from "./ailog";
 import { aiTotals, type Electricity } from "./meters";
 import type { BillRow, CellState, Report } from "./types";
-import { kindOf, type MeterUsage } from "./usage";
+import { kindOf, type MeterUsage, type TopUpEvent } from "./usage";
 
 // ── Design tokens (shadcn/ui "zinc" theme) ───────────────────────────────────
 const C = {
@@ -739,7 +739,7 @@ function relativeDay(d: Date, now: Date): string {
   return `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// ── Electricity: per meter an overview (monthly usage, how often you top up), the top-ups, the readings ──
+// ── Electricity: per meter an overview (usage between top-ups, the next top-up), the top-ups, the readings ──
 function drawElectricityPages(r: Painter, rep: Report, e: Electricity, newPage: () => void) {
   for (const u of e.usages) {
     newPage();
@@ -774,7 +774,7 @@ function drawMeterOverview(r: Painter, rep: Report, e: Electricity, u: MeterUsag
     `${u.photos.length} meter photo${u.photos.length === 1 ? "" : "s"}`,
     e.reader ? `read by ${e.reader}` : "no AI reader chosen",
     edited ? `${edited} corrected by hand` : "",
-    u.estimatedDates ? `${u.estimatedDates} without a capture date (mid-month assumed)` : "",
+    u.estimatedDates ? `${u.estimatedDates} without a capture date (only the month is known)` : "",
   ].filter(Boolean);
   r.text(sub.join("  ·  "), M, M + 50, { size: 8.5, color: C.muted, maxW: TW - 220 });
 
@@ -800,151 +800,182 @@ function drawMeterOverview(r: Painter, rep: Report, e: Electricity, u: MeterUsag
     r.text(line2, kx + 14, ky + 65, { size: 7.5, color: C.faint, maxW: kw - 28 });
   };
   const f = u.frequency;
-  const days = Math.round(u.coveredDays);
-  kpi(0, "zap", `Used in ${year}`, u.coveredDays ? kwh(u.totalUsed, 0) : "—", u.coveredDays ? "kWh" : "",
-    u.coveredDays ? `measured over ${days} day${days === 1 ? "" : "s"}` : "needs two readings days apart",
-    u.perDay !== null ? `about ${kwh(u.perDay * 30.44, 0)} kWh a month` : "");
-  kpi(1, "trending", "Average per day", u.perDay !== null ? kwh(u.perDay, 1) : "—", u.perDay !== null ? "kWh" : "",
-    u.recentPerDay !== null && u.perDay !== null ? `lately ${kwh(u.recentPerDay, 1)} kWh a day` : "", "");
+  const rate = u.rate;
+  kpi(0, "zap", "Used between top-ups", u.cycles ? kwh(u.totalUsed, 0) : "—", u.cycles ? "kWh" : "",
+    u.usedFrom && u.usedTo ? `${pointLabel(u.usedFrom)} – ${pointLabel(u.usedTo)}` : "needs two top-ups with before/after photos",
+    f.avgUsed !== null ? `about ${kwh(f.avgUsed, 0)} kWh from one top-up to the next` : "");
+  kpi(1, "trending", "Average per day", rate ? kwh(rate.perDay, 1) : "—", rate ? "kWh" : "",
+    rate ? `over ${Math.round(rate.days)} days between dated photos` : "needs two top-ups with a capture date",
+    u.recent ? `lately ${kwh(u.recent.perDay, 1)} a day, since ${shortDate(u.recent.from)}` : "");
   kpi(2, "plus", `Top-ups in ${year}`, `${f.count}`, "",
-    f.avgDays !== null ? `about every ${Math.round(f.avgDays)} days` : f.count ? "one so far" : "none yet",
+    f.avgDays !== null ? `about every ${Math.round(f.avgDays)} days` : f.count ? "" : "none yet",
     f.count ? `${kwh(u.totalToppedUp, 0)} kWh in total` : "");
   kpi(3, "wallet", "Balance", u.balance ? kwh(u.balance.kwh, 1) : "—", u.balance ? "kWh" : "",
-    u.balance ? `at the last photo, ${shortDate(u.balance.at)}` : "no balance photo yet",
-    u.runsOut ? `runs out about ${shortDate(u.runsOut)}` : "");
+    u.balance ? `at the last photo, ${pointLabel(u.balance)}` : "no balance photo yet",
+    f.next ? `next top-up around ${shortDate(f.next)}` : u.runsOut ? `runs out about ${shortDate(u.runsOut)}` : "");
 
   const top = ky + kh + 12;
   const bottom = H - M - 16;
   const leftW = 486;
-  drawMonthlyTable(r, rep, u, M, top, leftW, bottom - top);
-  drawFrequency(r, rep, u, M + leftW + 12, top, W - M - (M + leftW + 12), bottom - top);
+  drawCycles(r, u, M, top, leftW, bottom - top);
+  drawNextTopUp(r, rep, u, M + leftW + 12, top, W - M - (M + leftW + 12), bottom - top);
 }
 
-/** kWh used per month: measured, per day, days covered, the whole month estimated, topped up. */
-function drawMonthlyTable(r: Painter, rep: Report, u: MeterUsage, x: number, y: number, w: number, h: number) {
+/** "4 Nov", or just the month ("Apr #2") for a photo without a capture date. */
+function pointLabel(p: { at: Date; estimated: boolean }): string {
+  return p.estimated ? MON[p.at.getMonth()] : shortDate(p.at);
+}
+function eventLabel(e: TopUpEvent): string {
+  return e.estimated ? `${MON[e.at.getMonth()]}${e.txn ? ` #${e.txn}` : ""}` : shortDate(e.at);
+}
+
+/**
+ * kWh used from each top-up to the next. The kWh are exact whatever the dates; days and kWh a day only
+ * where both top-ups have a capture date.
+ */
+function drawCycles(r: Painter, u: MeterUsage, x: number, y: number, w: number, h: number) {
   r.card(x, y, w, h);
   const px = x + 16;
   const iw = w - 32;
-  r.text("kWh used per month", px, y + 19, { size: 10.5, weight: "semibold" });
+  r.text("kWh used between top-ups", px, y + 19, { size: 10.5, weight: "semibold" });
   r.icon("bars", x + w - 28, y + 12, 12, C.faint);
 
-  const lastMonth = rep.currentMonth >= 1 && rep.currentMonth <= 12 ? rep.currentMonth : 12;
-  const active = u.months.map((m, i) => (m.used !== null || m.topUps > 0 ? i : -1)).filter((i) => i >= 0);
-  if (active.length === 0) {
-    r.text("Needs two balance readings a few days apart.", px, y + 44, { size: 8, color: C.muted });
+  interface Row { from: string; to: string; used: number | null; days: number | null; perDay: number | null; now: boolean; problem: string | null }
+  let rows: Row[] = [];
+  for (let i = 1; i < u.events.length; i++) {
+    const a = u.events[i - 1];
+    const b = u.events[i];
+    rows.push({ from: eventLabel(a), to: eventLabel(b), used: b.usedSincePrev, days: b.sincePrevDays, perDay: b.perDay, now: false, problem: b.usedSincePrev === null ? b.problem : null });
+  }
+  const last = u.events[u.events.length - 1];
+  if (u.sinceLast && last && u.balance) {
+    const s = u.sinceLast;
+    rows.push({ from: eventLabel(last), to: `now, ${pointLabel(u.balance)}`, used: s.used, days: s.days, perDay: s.perDay, now: true, problem: null });
+  }
+  if (rows.length === 0) {
+    r.text("Needs two top-ups, each with a photo of the credit before and after.", px, y + 44, { size: 8, color: C.muted, maxW: iw });
     return;
   }
-  const from = active[0];
-  const to = Math.max(active[active.length - 1], Math.min(lastMonth - 1, 11));
-  const months = Array.from({ length: to - from + 1 }, (_, k) => from + k);
 
-  // Columns: right edges for numbers
-  const col = { month: px, used: px + 88, bar: px + 96, perDay: px + 222, days: px + 290, full: px + 352, topped: px + 402, n: px + iw };
+  const col = { from: px, to: px + 54, used: px + 176, bar: px + 186, days: px + 372, perDay: px + iw };
+  const barW = 132;
   const head = (s: string, hx: number, align: "left" | "right" = "right") =>
     r.text(s, hx, y + 40, { size: 6.4, weight: "semibold", color: C.muted, spacing: 0.4, align });
-  head("MONTH", col.month, "left");
-  head("USED", col.used);
-  head("PER DAY", col.perDay);
-  head("DAYS MEASURED", col.days);
-  head("FULL MONTH*", col.full);
-  head("TOPPED UP", col.topped);
-  head("TOP-UPS", col.n);
+  head("FROM", col.from, "left");
+  head("TO", col.to, "left");
+  head("KWH USED", col.used);
+  head("DAYS", col.days);
+  head("KWH A DAY", col.perDay);
   r.doc.moveTo(px, y + 47).lineTo(px + iw, y + 47).lineWidth(0.6).stroke(C.border);
 
-  const rowH = Math.min(18, (h - 100) / (months.length + 1));
-  const max = Math.max(1, ...months.map((m) => u.months[m].fullMonth ?? u.months[m].used ?? 0));
+  const avail = h - 47 - 40;
+  const fit = Math.max(1, Math.floor(avail / 12) - 1);
+  const hidden = Math.max(0, rows.length - fit);
+  const shown = rows.slice(hidden);
+  const rowH = Math.min(18, avail / (shown.length + 1));
+  const max = Math.max(1, ...rows.map((row) => row.used ?? 0));
+  const avg = u.frequency.avgUsed;
   let cy = y + 47 + rowH / 2;
-  let totUsed = 0;
-  let totDays = 0;
-  let totTop = 0;
-  let totN = 0;
-  for (const m of months) {
-    const mu = u.months[m];
-    const isNow = m + 1 === rep.currentMonth;
-    const inMonth = new Date(rep.year, m + 1, 0).getDate();
-    r.text(MONTHS[m], col.month, cy, { size: 8, weight: isNow ? "semibold" : "regular", color: isNow ? C.blue : C.fg2 });
-    if (mu.used !== null) {
-      r.text(kwh(mu.used, 0), col.used, cy, { size: 8, weight: "semibold", align: "right" });
-      const bw = (96 * mu.used) / max;
-      const full = mu.fullMonth !== null ? (96 * mu.fullMonth) / max : bw;
-      if (full > bw) r.doc.roundedRect(col.bar, cy - 3, full, 6, 2).fill(C.mutedBg);
-      if (bw > 0) r.doc.roundedRect(col.bar, cy - 3, Math.max(bw, 2), 6, 2).fill(isNow ? C.blue : C.bar);
-      r.text(kwh(mu.used / Math.max(mu.days, 1e-9), 1), col.perDay, cy, { size: 8, color: C.muted, align: "right" });
-      const partial = mu.days < inMonth - 0.5;
-      r.text(`${Math.round(mu.days)}${partial ? ` of ${inMonth}` : ""}`, col.days, cy, { size: 8, color: partial ? C.amberText : C.muted, align: "right" });
-      r.text(mu.fullMonth !== null ? `~${kwh(mu.fullMonth, 0)}` : "", col.full, cy, { size: 8, color: C.muted, align: "right" });
-      totUsed += mu.used;
-      totDays += mu.days;
+  for (const row of shown) {
+    const tone = row.now ? C.blue : C.fg2;
+    r.text(row.from, col.from, cy, { size: 8, color: tone });
+    r.text(row.to, col.to, cy, { size: 8, color: tone, maxW: col.used - col.to - 40 });
+    if (row.used !== null) {
+      r.text(kwh(row.used, 1), col.used, cy, { size: 8, weight: "semibold", align: "right" });
+      r.doc.roundedRect(col.bar, cy - 3, barW, 6, 2).fill(C.mutedBg);
+      if (row.used > 0) r.doc.roundedRect(col.bar, cy - 3, Math.max(2, (barW * row.used) / max), 6, 2).fill(row.now ? C.blue : C.bar);
     } else {
-      r.text("no readings", col.used, cy, { size: 7.5, color: C.faint, align: "right" });
+      r.text(row.problem ? "check photos" : "unknown", col.used, cy, { size: 7.5, color: row.problem ? C.roseText : C.faint, align: "right" });
     }
-    r.text(mu.toppedUp ? kwh(mu.toppedUp, 0) : "—", col.topped, cy, { size: 8, color: mu.toppedUp ? C.greenText : C.faint, align: "right" });
-    r.text(mu.topUps ? `${mu.topUps}` : "—", col.n, cy, { size: 8, weight: mu.topUps > 1 ? "semibold" : "regular", color: mu.topUps ? C.fg2 : C.faint, align: "right" });
-    totTop += mu.toppedUp;
-    totN += mu.topUps;
+    r.text(row.days === null ? "—" : kwh(row.days, row.days < 10 ? 1 : 0), col.days, cy, { size: 8, color: row.days === null ? C.faint : C.muted, align: "right" });
+    r.text(row.perDay === null ? "—" : kwh(row.perDay, 1), col.perDay, cy, { size: 8, color: row.perDay === null ? C.faint : C.muted, align: "right" });
     r.doc.moveTo(px, cy + rowH / 2).lineTo(px + iw, cy + rowH / 2).lineWidth(0.4).stroke(C.line);
     cy += rowH;
   }
+  if (avg !== null) {
+    // The average from one top-up to the next, across the bars
+    const ax = col.bar + (barW * avg) / max;
+    const top = y + 47 + 2;
+    r.doc.save().moveTo(ax, top).lineTo(ax, cy - rowH / 2 - 2).lineWidth(0.6).dash(1.5, { space: 1.5 }).stroke(C.faint).restore();
+  }
+
   // Total
   r.doc.moveTo(px, cy - rowH / 2).lineTo(px + iw, cy - rowH / 2).lineWidth(0.6).stroke(C.border);
-  r.text("Total", col.month, cy, { size: 8, weight: "semibold" });
-  r.text(kwh(totUsed, 0), col.used, cy, { size: 8, weight: "bold", align: "right" });
-  if (totDays >= 1) r.text(kwh(totUsed / totDays, 1), col.perDay, cy, { size: 8, weight: "semibold", color: C.fg2, align: "right" });
-  r.text(`${Math.round(totDays)}`, col.days, cy, { size: 8, color: C.muted, align: "right" });
-  r.text(kwh(totTop, 0), col.topped, cy, { size: 8, weight: "semibold", color: C.greenText, align: "right" });
-  r.text(`${totN}`, col.n, cy, { size: 8, weight: "semibold", align: "right" });
+  r.text(hidden ? `Total, all ${rows.length}` : "Total", col.from, cy, { size: 8, weight: "semibold" });
+  r.text(kwh(u.totalUsed, 0), col.used, cy, { size: 8, weight: "bold", align: "right" });
+  if (avg !== null) r.text(`dashed line: ${kwh(avg, 0)} kWh on average`, col.bar, cy, { size: 6.8, color: C.faint });
+  if (u.rate) {
+    r.text(kwh(u.rate.days, 0), col.days, cy, { size: 8, color: C.muted, align: "right" });
+    r.text(kwh(u.rate.perDay, 1), col.perDay, cy, { size: 8, weight: "semibold", color: C.fg2, align: "right" });
+  }
 
-  r.text(
-    "Usage between two readings is spread over the days it covers. Days measured: days of the month between readings (amber: part of the month).",
-    px, y + h - 22, { size: 6.6, color: C.faint, maxW: iw }
-  );
-  r.text("* Full month: the measured daily rate over the whole month, for months only partly covered.", px, y + h - 12, { size: 6.6, color: C.faint, maxW: iw });
+  const notes = [
+    "Used = credit just after one top-up − credit just before the next: exact even when a photo has no date.",
+    "Days and kWh a day only where both photos have a capture date; a month name (\"Apr #2\") means they have none.",
+    "Total: days and kWh a day from the first to the last dated photo, with every top-up in between counted.",
+  ];
+  if (hidden) notes.unshift(`The ${hidden} earliest are on the top-ups page.`);
+  let ny = y + h - 10 - 10 * (notes.length - 1);
+  for (const n of notes) {
+    r.text(n, px, ny, { size: 6.6, color: C.faint, maxW: iw });
+    ny += 10;
+  }
 }
 
-/** How often the meter is topped up: interval, amount, last and next, and a timeline of the year. */
-function drawFrequency(r: Painter, rep: Report, u: MeterUsage, x: number, y: number, w: number, h: number) {
+/** How often you top up and when the next one is due, from the kWh used between past top-ups. */
+function drawNextTopUp(r: Painter, rep: Report, u: MeterUsage, x: number, y: number, w: number, h: number) {
   r.card(x, y, w, h);
   const px = x + 16;
   const iw = w - 32;
-  r.text("How often you top up", px, y + 19, { size: 10.5, weight: "semibold" });
+  r.text("Next top-up", px, y + 19, { size: 10.5, weight: "semibold" });
   r.icon("clock", x + w - 28, y + 12, 12, C.faint);
   const f = u.frequency;
-  if (f.count === 0) {
+  if (f.count === 0 && u.events.length === 0) {
     r.text("No top-up found yet: add photos before and after a top-up.", px, y + 44, { size: 8, color: C.muted, maxW: iw });
     return;
   }
   const today = rep.generatedAt;
-  const items: [string, string, string?][] = [];
-  items.push([`Top-ups in ${rep.year}`, `${f.count}`]);
-  if (f.avgDays !== null) {
-    items.push(["Usually every", `${Math.round(f.avgDays)} days`, f.minDays !== null && f.maxDays !== null && Math.round(f.minDays) !== Math.round(f.maxDays) ? `${Math.round(f.minDays)} to ${Math.round(f.maxDays)} days apart` : undefined]);
-    items.push(["That's about", `${kwh(f.perMonth ?? 0, 1)} top-up${(f.perMonth ?? 0) >= 1.05 ? "s" : ""} a month`]);
+  const days = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 86_400_000);
+  const items: { label: string; value: string; notes?: string[]; warn?: boolean }[] = [];
+  if (f.next && u.rate && f.usualBefore !== null) {
+    const late = days(f.next, today);
+    items.push({
+      label: "Around",
+      value: shortDate(f.next),
+      notes: [
+        late > 0 ? `${late} day${late === 1 ? "" : "s"} ago: due already` : `when the credit is down to about ${kwh(f.usualBefore, 0)} kWh`,
+        `at ${kwh(u.rate.perDay, 1)} kWh a day, your average`,
+        ...(f.nextRecent ? [`${shortDate(f.nextRecent)} at the recent ${kwh(u.recent!.perDay, 1)} kWh a day`] : []),
+      ],
+      warn: late > 0,
+    });
   }
-  if (f.avgAmount !== null) items.push(["Usual amount", `${kwh(f.avgAmount, 0)} kWh`, "average per top-up"]);
-  if (f.last) items.push(["Last top-up", `${shortDate(f.last.at)} · ${kwh(f.last.amount, 0)} kWh`, `${Math.round((today.getTime() - f.last.at.getTime()) / 86_400_000)} days ago`]);
-  if (f.nextAround) {
-    const late = Math.round((today.getTime() - f.nextAround.getTime()) / 86_400_000);
-    items.push(["Next one, going by the usual gap", `around ${shortDate(f.nextAround)}`, late > 0 ? `${late} days later than usual already` : undefined]);
-  }
-  if (u.runsOut && u.balance) items.push(["Credit runs out", `about ${shortDate(u.runsOut)}`, `${kwh(u.balance.kwh, 1)} kWh left on ${shortDate(u.balance.at)}`]);
+  if (u.runsOut && u.balance) items.push({ label: "Credit runs out", value: `about ${shortDate(u.runsOut)}`, notes: [`${kwh(u.balance.kwh, 1)} kWh left on ${pointLabel(u.balance)}`] });
+  if (f.last) items.push({ label: "Last top-up", value: `${eventLabel(f.last)} · ${kwh(f.last.amount, 0)} kWh`, notes: f.last.estimated ? undefined : [`${days(f.last.at, today)} days ago`] });
+  if (f.avgDays !== null) items.push({ label: "Usually every", value: `${Math.round(f.avgDays)} days`, notes: [`${kwh(f.perMonth ?? 0, 1)} top-ups a month`] });
+  if (f.avgUsed !== null) items.push({ label: "Used per top-up", value: `${kwh(f.avgUsed, 0)} kWh`, notes: ["average, from one top-up to the next"] });
+  if (f.usualBefore !== null) items.push({ label: "You top up at", value: `${kwh(f.usualBefore, 0)} kWh left`, notes: ["usual credit just before a top-up"] });
+  if (f.avgAmount !== null) items.push({ label: `Top-ups in ${rep.year}`, value: `${f.count} · ${kwh(f.avgAmount, 0)} kWh each`, notes: f.count ? undefined : ["none yet"] });
+  if (!u.rate) items.push({ label: "kWh a day", value: "not yet", notes: ["needs two top-ups with a capture date"] });
 
   let cy = y + 42;
-  for (const [label, value, note] of items) {
-    r.text(label, px, cy, { size: 7.8, color: C.muted, maxW: iw * 0.55 });
-    r.text(value, px + iw, cy, { size: 8.2, weight: "semibold", color: C.fg, align: "right" });
-    if (note) {
+  for (const it of items) {
+    r.text(it.label, px, cy, { size: 7.8, color: C.muted, maxW: iw * 0.45 });
+    r.text(it.value, px + iw, cy, { size: 8.2, weight: "semibold", color: it.warn ? C.amberText : C.fg, align: "right" });
+    for (const [k, n] of (it.notes ?? []).entries()) {
       cy += 10;
-      r.text(note, px + iw, cy, { size: 6.8, color: note.includes("later") ? C.amberText : C.faint, align: "right" });
+      r.text(n, px + iw, cy, { size: 6.8, color: it.warn && k === 0 ? C.amberText : C.faint, align: "right" });
     }
     cy += 7;
     r.doc.moveTo(px, cy).lineTo(px + iw, cy).lineWidth(0.4).stroke(C.line);
     cy += 10;
   }
 
-  // Timeline: one mark per top-up across the year
+  // Timeline: one mark per top-up across the year; hollow when it has no capture date
   const ty = y + h - 30;
   if (ty - cy < 26) return;
   r.text(`TOP-UPS IN ${rep.year}`, px, ty - 22, { size: 6.4, weight: "semibold", color: C.muted, spacing: 0.4 });
+  if (u.events.some((e) => e.estimated)) r.text("hollow: no capture date, placed by usage", px + iw, ty - 22, { size: 6.2, color: C.faint, align: "right" });
   r.doc.moveTo(px, ty).lineTo(px + iw, ty).lineWidth(0.8).stroke(C.border);
   const start = new Date(rep.year, 0, 1).getTime();
   const span = new Date(rep.year + 1, 0, 1).getTime() - start;
@@ -956,7 +987,13 @@ function drawFrequency(r: Painter, rep: Report, u: MeterUsage, x: number, y: num
   for (const ev of u.events) {
     if (ev.at.getFullYear() !== rep.year) continue;
     const ex = px + (iw * (ev.at.getTime() - start)) / span;
-    r.doc.circle(ex, ty, 3.4).fill(ev.problem ? C.rose : C.green);
+    const color = ev.problem ? C.rose : C.green;
+    if (ev.estimated) r.doc.circle(ex, ty, 2.8).fillAndStroke(C.card, color);
+    else r.doc.circle(ex, ty, 3.4).fill(color);
+  }
+  if (f.next && f.next.getFullYear() === rep.year) {
+    const nx = px + (iw * (f.next.getTime() - start)) / span;
+    r.doc.save().circle(nx, ty, 3.2).lineWidth(0.8).dash(1.2, { space: 1.2 }).stroke(C.muted).restore();
   }
 }
 
@@ -964,6 +1001,7 @@ interface TopUpRow {
   kind: "topup" | "now";
   n: number;
   at: Date;
+  label: string;
   sincePrevDays: number | null;
   before: number | null;
   amount: number | null;
@@ -984,41 +1022,40 @@ function topUpRows(u: MeterUsage): TopUpRow[] {
     if (ev.amountInferred) notes.push("no photo of the amount: after − before");
     if (!ev.after && ev.before) notes.push("no after photo: before + top-up");
     if (!ev.before) notes.push("no before photo");
-    if (ev.estimated) notes.push("date estimated");
+    if (ev.estimated) notes.push("no capture date: month only");
     return {
       kind: "topup",
       n: i + 1,
       at: ev.at,
+      label: ev.estimated ? `${MON[ev.at.getMonth()]}${ev.txn ? ` #${ev.txn}` : ""}` : `${DAYS[ev.at.getDay()]} ${shortDate(ev.at)}`,
       sincePrevDays: ev.sincePrevDays,
       before: ev.before?.kwh ?? null,
       amount: ev.amount,
       amountInferred: ev.amountInferred,
-      after: ev.after?.kwh ?? (ev.before ? ev.before.kwh + ev.amount : null),
-      afterDerived: !ev.after && Boolean(ev.before),
+      after: ev.credit,
+      afterDerived: !ev.after && ev.credit !== null,
       used: ev.usedSincePrev,
       perDay: ev.perDay,
       note: notes.join(" · "),
       problem: Boolean(ev.problem),
     };
   });
-  // Since the last top-up, up to the latest balance photo
-  const last = u.events[u.events.length - 1];
-  if (last && u.balance && u.balance.at.getTime() - last.at.getTime() > 6 * 3_600_000) {
-    const start = last.after ?? (last.before ? { kwh: last.before.kwh + last.amount, at: last.at } : null);
-    const used = start ? start.kwh - u.balance.kwh : null;
-    const days = start ? (u.balance.at.getTime() - start.at.getTime()) / 86_400_000 : 0;
+  // Since the last top-up, up to the latest photo of the credit left
+  const s = u.sinceLast;
+  if (s && u.balance) {
     rows.push({
       kind: "now",
       n: 0,
-      at: u.balance.at,
-      sincePrevDays: (u.balance.at.getTime() - last.at.getTime()) / 86_400_000,
+      at: s.at,
+      label: `Now (${u.balance.estimated ? MON[s.at.getMonth()] : shortDate(s.at)})`,
+      sincePrevDays: s.days,
       before: u.balance.kwh,
       amount: null,
       amountInferred: false,
       after: null,
       afterDerived: false,
-      used: used !== null && used >= -0.5 ? Math.max(0, used) : null,
-      perDay: used !== null && used >= 0 && days >= 0.5 ? used / days : null,
+      used: s.used,
+      perDay: s.perDay,
       note: "latest photo: credit left, no top-up yet",
       problem: false,
     });
@@ -1030,7 +1067,7 @@ function drawTopUpsPage(r: Painter, rep: Report, u: MeterUsage, rows: TopUpRow[]
   const tw = r.text(`${u.meter} top-ups`, M, M + 8, { size: 15, weight: "bold" });
   r.text(cont ? `${rep.year} · continued` : `${rep.year}`, M + tw + 7, M + 9, { size: 11, weight: "medium", color: C.faint });
   r.text(
-    "Each top-up on one row: the credit just before, the kWh added and the credit just after. Used since last top-up = credit after the previous top-up − credit before this one.",
+    "Each top-up on one row: the credit just before, the kWh added and the credit just after. Used since last top-up = credit after the previous one − credit before this one. Days and per day: only when both have a capture date.",
     M, M + 25, { size: 7.2, color: C.muted, maxW: TW }
   );
   if (rows.length === 0) {
@@ -1068,7 +1105,7 @@ function drawTopUpsPage(r: Painter, rep: Report, u: MeterUsage, rows: TopUpRow[]
     if (row.kind === "now") d.rect(M, y, TW, TOPUP_ROW_H).fill(C.subtle);
     const dim = row.kind === "now";
     r.text(row.kind === "now" ? "" : `${row.n}`, col.n, cy, { size: 7.8, color: C.faint });
-    r.text(row.kind === "now" ? `Now (${shortDate(row.at)})` : `${DAYS[row.at.getDay()]} ${shortDate(row.at)}`, col.date, cy, { size: 8, weight: "medium", color: dim ? C.muted : C.fg2 });
+    r.text(row.label, col.date, cy, { size: 8, weight: "medium", color: dim ? C.muted : C.fg2 });
     r.text(row.sincePrevDays === null ? "—" : `${Math.round(row.sincePrevDays)}`, col.since, cy, { size: 8, weight: "semibold", color: row.sincePrevDays === null ? C.faint : C.fg, align: "right" });
     r.text(row.before === null ? "—" : kwh(row.before, 2), col.before, cy, { size: 8, color: row.before === null ? C.faint : C.fg2, align: "right" });
     if (row.amount !== null) {

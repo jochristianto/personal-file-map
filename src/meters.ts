@@ -187,6 +187,8 @@ export interface MeterPhoto {
   dateSource: DateSource;
   /** "Before" / "Input" / "After" in the file name: what the photo shows (credit left, kWh added, credit left). */
   label: MeterLabel;
+  /** Which top-up of the month ("#2" → 2), or null without a "#N". */
+  txn: number | null;
   reading: StoredReading | null;
 }
 
@@ -227,7 +229,7 @@ export async function meterPhotos(dir: string, year: number, files: BillFile[], 
       takenAt = inMonth ? f.mtime : new Date(year, f.month - 1, 15, 12, 0, i); // keeps the order above within a month
       dateSource = inMonth ? "file" : "month";
     }
-    out.push({ meter, file: f.file, month: f.month, ext: f.ext, sha1, takenAt, dateSource, label, reading: store.get(f.file, sha1) });
+    out.push({ meter, file: f.file, month: f.month, ext: f.ext, sha1, takenAt, dateSource, label, txn: f.txn, reading: store.get(f.file, sha1) });
   }
   return out.sort((a, b) => a.takenAt.getTime() - b.takenAt.getTime() || LABEL_ORDER[a.label] - LABEL_ORDER[b.label] ||
     a.file.localeCompare(b.file, "en", { numeric: true }));
