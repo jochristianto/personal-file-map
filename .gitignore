@@ -1,0 +1,22 @@
+# ── Build ─────────────────────────────────────────────
+source/node_modules/
+source/dist/
+
+# Built apps (rebuild with: cd source && npm run build)
+/Bills Overview.app/
+/Bills Overview.exe
+
+# ── Generated / test data ─────────────────────────────
+# Report written by the app on every run
+Bills Overview *.pdf
+
+# Bill files ("YYYYMM Name.ext"): fake test data here, real data lives in Drive
+/[0-9][0-9][0-9][0-9][0-9][0-9] *
+
+# Stray test files
+/Notes.txt
+
+# ── OS clutter ────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

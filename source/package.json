@@ -1,0 +1,23 @@
+{
+  "name": "bills-overview",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Double-click generator for a monthly bills overview PDF (macOS + Windows)",
+  "scripts": {
+    "dev": "node build.mjs --bundle-only && node dist/bills-overview.cjs",
+    "typecheck": "tsc --noEmit",
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "heic-convert": "^2.1.0",
+    "pdfkit": "^0.20.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/pdfkit": "^0.17.7",
+    "@yao-pkg/pkg": "^6.25.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  }
+}
