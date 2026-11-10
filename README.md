@@ -6,6 +6,10 @@ A double-click app for macOS and Windows that turns a folder of monthly bill fil
 
 <sub>The numbers are from the sample bills made by <code>pnpm samples</code>.</sub>
 
+[![Personal File Map: watch the 15-second reel, with sound](docs/reel-poster.jpg)](docs/reel.mp4)
+
+<sub>The 15-second reel (MP4, with sound): file names sort themselves, the bill matrix fills, paid / due / missing flag, the report builds, a meter photo is read, and it all resolves into the app icon. How it's made: <a href="docs/motion/showreel/">docs/motion/showreel</a>.</sub>
+
 You keep doing what you already do: save each bill, receipt or payment screenshot as `YYYYMM Name.ext` in a folder. Double-click the app in that folder: a settings window opens where you pick the bills folder and say when each bill is due. Click **Generate report**, and `personal-file-map.output.pdf` opens with:
 
 - **Overview page:** paid vs. still due this month, missing files, year-to-date coverage, latest upload, a files-per-month chart, highlights, and a *Housekeeping* list of files that couldn't be read.

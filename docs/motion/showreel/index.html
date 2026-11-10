@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Personal File Map · reel</title>
+<!--
+  A 15-second motion reel for Personal File Map, as one page seeked frame by frame (render.mjs calls window.seek(t)).
+  Every style is a pure function of t: no CSS transitions, no timers, nothing kept between frames.
+  Timing: 123.997 BPM (the song's measured tempo), 31 beats = 15.00 s. Beat n is at b(n).
+  Labels, colors and numbers are the app's own (src/window.html, src/pdf.ts, docs/motion/demo/facts.json).
+-->
+<style>
+  @font-face { font-family: Inter; font-weight: 400; src: url(../../../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family: Inter; font-weight: 500; src: url(../../../node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family: Inter; font-weight: 600; src: url(../../../node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family: Inter; font-weight: 700; src: url(../../../node_modules/@fontsource/inter/files/inter-latin-700-normal.woff2) format("woff2"); }
+  @font-face { font-family: Inter; font-weight: 800; src: url(../../../node_modules/@fontsource/inter/files/inter-latin-800-normal.woff2) format("woff2"); }
+  @font-face { font-family: RMono; font-weight: 100 900; src: url("file:///System/Library/Fonts/SFNSMono.ttf"), local("Menlo"); }
+  :root { --mono: RMono, ui-monospace, Menlo, Consolas, monospace; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #09090b; }
+  body { font-family: Inter, -apple-system, sans-serif; color: #fafafa; -webkit-font-smoothing: antialiased; }
+  #frame { position: absolute; inset: 0; overflow: hidden; background: #09090b; }
+  .abs { position: absolute; left: 0; top: 0; }
+  .scene { position: absolute; inset: 0; overflow: hidden; display: none; }
+  .mono { font-family: var(--mono); }
+  .nw { white-space: nowrap; }
+  .mask { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 0.04em; margin: 0 -0.04em; }
+  .mask > span { display: inline-block; }
+  svg { overflow: visible; }
+
+  /* report page (src/pdf.ts, light) */
+  .page { background: #fff; color: #09090b; width: 1280px; height: 905px; font-family: Inter; }
+  .page .card { position: absolute; background: #fff; border: 1px solid #e4e4e7; border-radius: 14px; }
+  .page .lbl { font-size: 13px; color: #3f3f46; }
+  .page .ic { position: absolute; right: 18px; top: 16px; width: 18px; height: 18px; color: #a1a1aa; }
+  .page .h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+  .page .sub { font-size: 12.5px; color: #71717a; }
+  .pill { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; font-weight: 500; white-space: nowrap; }
+  .chip { display: inline-flex; align-items: center; height: 25px; padding: 0 10px; border-radius: 13px; background: #fffbeb; border: 1px solid #fde68a; color: #b45309; font-size: 12.5px; font-weight: 500; }
+  .bar { position: absolute; height: 7px; border-radius: 4px; background: #f4f4f5; overflow: hidden; }
+  .bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: #16a34a; transform-origin: 0 0; }
+</style>
+</head>
+<body>
+<div id="frame"></div>
+<script>
+// ───────────────────────── time, easing, springs ─────────────────────────
+const BPM = 123.997, B = 60 / BPM, T = 15.0, W = 1920, H = 1080;
+const b = (n) => n * B;
+const clamp = (x, a = 0, c = 1) => Math.min(c, Math.max(a, x));
+const lerp = (a, c, x) => a + (c - a) * x;
+const p = (t, a, d) => clamp((t - a) / d);
+const E = {
+  outExpo: (x) => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x)),
+  inExpo: (x) => (x <= 0 ? 0 : Math.pow(2, 10 * x - 10)),
+  inOutExpo: (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x < 0.5 ? Math.pow(2, 20 * x - 10) / 2 : (2 - Math.pow(2, -20 * x + 10)) / 2),
+  outCubic: (x) => 1 - Math.pow(1 - x, 3),
+  inCubic: (x) => x * x * x,
+  inOutCubic: (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2),
+  outQuart: (x) => 1 - Math.pow(1 - x, 4),
+  inOutQuart: (x) => (x < 0.5 ? 8 * x * x * x * x : 1 - Math.pow(-2 * x + 2, 4) / 2),
+  outBack: (x, s = 1.70158) => 1 + (s + 1) * Math.pow(x - 1, 3) + s * Math.pow(x - 1, 2),
+};
+// Closed-form step response of a damped spring, s seconds after release (f: Hz, z: damping ratio)
+function spring(s, f = 2.5, z = 0.6) {
+  if (s <= 0) return 0;
+  const w = 2 * Math.PI * f;
+  if (z >= 1) return 1 - (1 + w * s) * Math.exp(-w * s);
+  const wd = w * Math.sqrt(1 - z * z);
+  return 1 - Math.exp(-z * w * s) * (Math.cos(wd * s) + ((z * w) / wd) * Math.sin(wd * s));
+}
+// Decaying shake, for impacts
+const shake = (t, t0, amp, freq = 31, decay = 9) => (t < t0 ? 0 : amp * Math.sin((t - t0) * freq * 2 * Math.PI) * Math.exp(-(t - t0) * decay));
+function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; }; }
+const RGB = {};
+const rgbOf = (h) => RGB[h] || (RGB[h] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
+const hex2 = (v) => Math.round(v).toString(16).padStart(2, "0");
+const mixc = (a, c, k) => { const A = rgbOf(a), C = rgbOf(c); k = clamp(k); return "#" + [0, 1, 2].map((i) => hex2(A[i] + (C[i] - A[i]) * k)).join(""); };
+
+// ───────────────────────── DOM helpers ─────────────────────────
+const frame = document.getElementById("frame");
+function h(tag, props = {}, parent) {
+  const e = tag.startsWith("svg:") ? document.createElementNS("http://www.w3.org/2000/svg", tag.slice(4)) : document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "cls") e.setAttribute("class", v);
+    else if (k === "style") typeof v === "string" ? e.setAttribute("style", v) : Object.assign(e.style, v);
+    else if (k === "text") e.textContent = v;
+    else if (k === "html") e.innerHTML = v;
+    else e.setAttribute(k, v);
+  }
+  if (parent) parent.appendChild(e);
+  return e;
+}
+// Style setter that only touches the DOM when a value changes
+function st(e, o) { const c = e.__s || (e.__s = {}); for (const k in o) { const v = o[k]; if (c[k] !== v) { c[k] = v; e.style[k] = v; } } }
+function at(e, o) { const c = e.__a || (e.__a = {}); for (const k in o) { const v = o[k]; if (c[k] !== v) { c[k] = v; e.setAttribute(k, v); } } }
+const vis = (e, on) => st(e, { display: on ? "block" : "none" });
+const px = (v) => `${v.toFixed(2)}px`;
+
+// ───────────────────────── the app's palette ─────────────────────────
+const C = {
+  ink: "#09090b", card: "#121214", fg: "#fafafa", fg2: "#e4e4e7", muted: "#a1a1aa", faint: "#71717a", dim: "#52525b", line: "#27272a",
+  lbg: "#fafafa", lfg: "#09090b", lmuted: "#71717a", lborder: "#e4e4e7", lline: "#f4f4f5",
+  green: "#16a34a", greenD: "#4ade80", greenText: "#15803d", greenBg: "#dcfce7",
+  amber: "#d97706", amberText: "#b45309", amberBg: "#fef3c7", amberBorder: "#fde68a",
+  rose: "#e11d48", roseText: "#be123c", roseBg: "#ffe4e6",
+  blue: "#2563eb", blueBg: "#eff6ff", violet: "#7c3aed", violetD: "#a78bfa", violetT: "#c4b5fd",
+};
+const ICON = {
+  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+  trend: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></svg>',
+  upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M8 17v-3"/><path d="M13 17V9"/><path d="M18 17v-6"/></svg>',
+  sparkle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg>',
+  camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>',
+};
+const CHECK = (s = 20) => `<svg width="${s}" height="${s}" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#16a34a"/><path d="M4.6 8.3l2.2 2.2 4.6-4.8" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const DUE = (s = 20) => `<svg width="${s}" height="${s}" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.5" fill="#fef3c7" stroke="#d97706" stroke-width="1.2" stroke-dasharray="2 1.6"/><path class="hand" d="M8 5v3.2l2 1.2" fill="none" stroke="#b45309" stroke-width="1.3" stroke-linecap="round" style="transform-origin:8px 8px"/></svg>`;
+const MISS = (s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#ffe4e6"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" stroke="#be123c" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+
+// ───────────────────────── layers ─────────────────────────
+const S1 = h("div", { cls: "scene", style: { perspective: "1100px", perspectiveOrigin: "960px 540px" } }, frame);
+const S2 = h("div", { cls: "scene" }, frame);
+const S3 = h("div", { cls: "scene", style: { background: C.lbg } }, frame);
+const S5 = h("div", { cls: "scene", style: { background: "radial-gradient(1200px 800px at 50% 45%, #1c1c20 0%, #09090b 70%)" } }, frame);
+const S4 = h("div", { cls: "scene" }, frame);
+const S6 = h("div", { cls: "scene", style: { background: "radial-gradient(1100px 760px at 30% 45%, #18181c 0%, #09090b 70%)" } }, frame);
+const S7 = h("div", { cls: "scene" }, frame);
+const RING = h("div", { cls: "abs", style: { borderRadius: "50%", border: "3px solid #2563eb", boxShadow: "0 0 40px rgba(37,99,235,.6), inset 0 0 40px rgba(37,99,235,.35)", display: "none", pointerEvents: "none" } }, frame);
+const FLASH = h("div", { cls: "abs", style: { width: "1920px", height: "1080px", background: "#fff", opacity: 0, pointerEvents: "none" } }, frame);
+const VIGN = h("div", { cls: "abs", style: { width: "1920px", height: "1080px", background: "radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%)", pointerEvents: "none" } }, frame);
+const GRAIN = h("div", { cls: "abs", style: { width: "1920px", height: "1080px", mixBlendMode: "overlay", opacity: 0.07, pointerEvents: "none" } }, frame);
+const HUD = h("div", { cls: "abs", style: { width: "1920px", height: "1080px", pointerEvents: "none" } }, frame);
+
+// ═════════════════════════ S1 · SORT (b0–b4): a folder dump becomes a sorted list ═════════════════════════
+const PICK = ["202601 Credit Card.pdf", "202601 Gym.jpg", "202601 HOA Payment.jpg", "202601 Insurance Health.pdf", "202601 Phone.pdf", "202601 Property Tax 2 Payment.pdf", "202601 Salary.png", "202601 Water.pdf", "202602 Credit Card.pdf", "202602 Gym.jpg", "202602 Phone.pdf", "202602 Rent.pdf", "202602 Streaming.png", "202603 Car Loan.jpg", "202603 Electricity.pdf", "202603 Groceries Online.jpg", "202603 Insurance Health.pdf", "202603 Internet Payment.jpg", "202603 Mortgage Received.png", "202603 Phone.pdf", "202603 Salary.png", "202603 Water.pdf", "202604 Credit Card.pdf", "202604 Groceries Market.jpg", "202604 Gym.jpg", "202604 HOA Payment.jpg", "202604 Insurance Health.pdf", "202604 Internet Payment.jpg", "202604 Mortgage Received.png", "202604 Phone.pdf", "202604 Salary.png", "202604 Water.pdf", "202605 Charity.png", "202605 Electricity.pdf", "202605 Gym.jpg", "202605 Internet Invoice.pdf", "202605 Internet Receipt.pdf", "202605 Mortgage Sent.jpg", "202605 Rent.pdf", "202605 Streaming.png", "202606 Car Loan.jpg", "202606 Groceries Market.jpg", "202606 Internet Invoice.pdf", "202606 Internet Receipt.pdf", "202606 Mortgage Sent.jpg", "202606 Rent.pdf", "202606 Streaming.png", "202607 Car Loan.jpg", "202607 Electricity.pdf", "202607 HOA Invoice.pdf", "202607 Home Meter #1 After.jpg", "202607 Home Meter #1 Input.jpg", "202607 Insurance Car.pdf", "202607 Insurance Life.pdf", "202607 Internet Payment.jpg", "202607 Mortgage Received.png", "202607 Phone.pdf", "202607 Salary.png", "202607 Water.pdf", "202608 Credit Card.pdf", "202608 Home Meter #1 After.jpg", "202608 Home Meter #2 Payment Receipt.jpg", "202608 Insurance Health.pdf", "202608 Mortgage Received.png", "202609 Home Meter #1 Before.jpg", "202609 Rent.pdf",
+  "202610 Car Loan.jpg", "202610 Home Meter #1 Before.jpg", "202610 Salary.png", "202611 Mortgage Sent.jpg", "202611 Rent.pdf", "202611 Salary.png"].sort();
+const TARGET = "202610 Home Meter #1 Before.jpg";
+const S1FS = 16, S2FS = 64, ROWS = 18, COLW = 432;
+const s1big = h("div", { cls: "abs nw", style: { left: "960px", top: "540px", font: "800 400px/1 Inter", letterSpacing: "-0.055em", color: "transparent", webkitTextStroke: "2px #2a2a30", fontVariantNumeric: "tabular-nums" } }, S1);
+const s1bigLbl = h("div", { cls: "abs mono nw", style: { left: "960px", top: "760px", fontSize: "18px", letterSpacing: ".22em", color: C.dim, textTransform: "uppercase" }, text: "bills · receipts · screenshots · one folder" }, S1);
+const s1world = h("div", { cls: "abs", style: { left: "960px", top: "540px", transformStyle: "preserve-3d" } }, S1);
+const s1sweep = h("div", { cls: "abs", style: { width: "2px", height: "600px", top: "-300px", background: "linear-gradient(transparent, #4ade80, transparent)", boxShadow: "0 0 18px #4ade80", opacity: 0 } }, s1world);
+const r1 = rng(11);
+const names = PICK.map((name, i) => {
+  const e = h("div", { cls: "abs mono nw", style: { fontSize: S1FS + "px", lineHeight: "1", willChange: "transform" } }, s1world);
+  const pre = h("span", { text: name.slice(0, 6) }, e);
+  const rest = h("span", { text: name.slice(6) }, e);
+  const col = Math.floor(i / ROWS), row = i % ROWS;
+  return {
+    e, pre, rest, name, i, target: name === TARGET,
+    gx: -COLW * 2 + col * COLW + 6, gy: -ROWS * 15 + row * 30 + 15,
+    cx: (r1() * 2 - 1) * 1100, cy: (r1() * 2 - 1) * 600, cz: -1700 + r1() * 1850,
+    vx: (r1() * 2 - 1) * 40, vy: (r1() * 2 - 1) * 30, ry: (r1() * 2 - 1) * 55, rz: (r1() * 2 - 1) * 22,
+    d0: r1() * 0.16, d1: r1() * 0.05, w: 0,
+  };
+});
+const tgt = names.find((n) => n.target);
+
+function s1(t) {
+  // giant outlined counter behind the dump
+  const kc = E.outExpo(p(t, 0, b(1.8)));
+  const out = E.inExpo(p(t, b(1.8), b(0.6)));
+  s1big.textContent = String(Math.round(178 * kc));
+  st(s1big, { transform: `translate(-50%,-50%) scale(${(0.8 + 0.25 * kc + 0.6 * out).toFixed(4)})`, opacity: ((1 - out) * clamp(t * 6)).toFixed(3) });
+  st(s1bigLbl, { transform: `translate(-50%,0) translateY(${px(16 * (1 - E.outExpo(p(t, b(0.6), 0.5))))})`, opacity: (E.outExpo(p(t, b(0.6), 0.4)) * (1 - p(t, b(1.9), 0.25))).toFixed(3) });
+
+  // zoom into the target name (b3.35 → b4): geometric scale, linear path, so it lands as S2's 64 px line
+  const zk = E.inOutCubic(p(t, b(3.3), b(4) - b(3.3)));
+  const s = Math.pow(S2FS / S1FS, zk);
+  const tx = tgt.gx + tgt.w / 2, ty = tgt.gy;
+  const ox = lerp(tx, 0, zk) - tx * s, oy = lerp(ty, 0, zk) - ty * s;
+  st(s1world, { transform: `translate3d(${px(ox)},${px(oy)},0) scale(${s.toFixed(5)})` });
+
+  // the green sweep that lights the YYYYMM prefixes
+  const sw = E.inOutCubic(p(t, b(3) - 0.04, 0.42));
+  const sx = lerp(-COLW * 2 - 60, COLW * 2 + 60, sw);
+  st(s1sweep, { transform: `translateX(${px(sx)})`, opacity: (Math.sin(Math.PI * sw) * 0.9).toFixed(3) });
+
+  const fadeOthers = 1 - E.outCubic(p(t, b(3.4), 0.3));
+  for (const n of names) {
+    const kb = E.outExpo(p(t, n.d0, 0.75));
+    // chaos: burst from a point far away, then drift toward the camera
+    const ccx = n.cx + n.vx * t, ccy = n.cy + n.vy * t, ccz = n.cz + 320 * t;
+    let x = lerp(0, ccx, kb), y = lerp(0, ccy, kb), z = lerp(-3200, ccz, kb);
+    let ry = n.ry * (1 - 0.3 * kb), rz = n.rz;
+    // sort into the grid
+    const ks = spring(t - (b(2) + n.i * 0.0032 + n.d1), 2.3, 0.74);
+    x = lerp(x, n.gx + n.w / 2, ks); y = lerp(y, n.gy, ks); z = lerp(z, 0, ks);
+    ry = lerp(ry, 0, ks); rz = lerp(rz, 0, ks);
+    const depth = clamp(1 - Math.max(0, -z) / 2600);
+    let op = clamp(t * 8 - n.d0 * 8) * lerp(0.25 + 0.75 * Math.pow(depth, 1.3), 1, ks);
+    if (z > 700) op *= clamp(1 - (z - 700) / 300);
+    if (!n.target) op *= fadeOthers;
+    const lit = clamp((sx - n.gx) / 90) * ks;
+    const preC = mixc(mixc("#b4b4bc", "#a1a1aa", ks), "#fafafa", lit);
+    const restBase = n.target ? mixc("#52525b", "#fafafa", zk) : "#52525b";
+    st(n.pre, { color: preC });
+    st(n.rest, { color: lit > 0 ? (n.target && zk > 0 ? restBase : mixc("#a1a1aa", "#52525b", lit)) : mixc("#b4b4bc", "#a1a1aa", ks) });
+    st(n.e, { transform: `translate3d(${px(x - n.w / 2)},${px(y - S1FS / 2)},${px(z)}) rotateY(${ry.toFixed(2)}deg) rotateZ(${rz.toFixed(2)}deg)`, opacity: op.toFixed(3) });
+  }
+}
+
+// ═════════════════════════ S2 · PARSE (b4–b8): the name explains itself ═════════════════════════
+const TOK = [
+  { s: "2026", at: 0, label: "Year", c: "#a1a1aa", acc: "#71717a" },
+  { s: "10", at: 4, label: "Month", c: "#fafafa", acc: C.blue },
+  { s: "Home Meter", at: 7, label: "Bill", c: "#fafafa", acc: "#a1a1aa" },
+  { s: "#1", at: 18, label: "Top-up #1", c: C.greenD, acc: C.green },
+  { s: "Before", at: 21, label: "Before photo", c: C.violetT, acc: C.violet },
+  { s: ".jpg", at: 27, label: "Type", c: "#71717a", acc: "#52525b" },
+];
+const s2eyebrow = h("div", { cls: "abs mono nw", style: { left: "960px", top: "250px", fontSize: "22px", letterSpacing: ".06em", color: "#71717a" } }, S2);
+const s2head = h("div", { cls: "abs nw", style: { left: "960px", top: "296px", font: "800 112px/1.1 Inter", letterSpacing: "-0.045em", color: "#fafafa", transform: "translateX(-50%)" } }, S2);
+const HEAD_WORDS = ["Just", "name", "your", "files."];
+const s2words = HEAD_WORDS.map((w, i) => {
+  const m = h("span", { cls: "mask" }, s2head);
+  const inner = h("span", { html: w === "files." ? 'files<span style="color:#4ade80">.</span>' : w }, m);
+  if (i < HEAD_WORDS.length - 1) s2head.appendChild(document.createTextNode(" "));
+  return inner;
+});
+const toks = TOK.map((k) => {
+  const box = h("div", { cls: "abs", style: { borderRadius: "16px", border: `2px solid ${k.acc}`, background: k.acc + "1f" } }, S2);
+  const e = h("div", { cls: "abs mono nw", style: { fontSize: S2FS + "px", lineHeight: "1", top: 540 - S2FS / 2 + "px" }, text: k.s }, S2);
+  const line = h("div", { cls: "abs", style: { width: "2px", height: "40px", background: k.acc, transformOrigin: "50% 0" } }, S2);
+  const lab = h("div", { cls: "abs mono nw", style: { fontSize: "17px", letterSpacing: ".14em", textTransform: "uppercase", color: k.c === "#fafafa" ? "#d4d4d8" : k.c }, text: k.label }, S2);
+  return { ...k, box, e, line, lab };
+});
+let CW = 0, X0 = 0;
+
+function s2(t) {
+  // eyebrow types itself
+  const ey = "YYYYMM Name.ext";
+  const ne = Math.round(ey.length * p(t, b(5.2), 0.32));
+  s2eyebrow.textContent = ey.slice(0, ne) + (ne < ey.length && t > b(5.2) ? "▍" : "");
+  st(s2eyebrow, { transform: "translateX(-50%)", opacity: (1 - p(t, b(7), 0.2)).toFixed(3) });
+  s2words.forEach((w, i) => {
+    const kin = E.outExpo(p(t, b(5.5) + i * 0.06, 0.55));
+    const kout = E.inExpo(p(t, b(7) + i * 0.035, 0.32));
+    st(w, { transform: `translateY(${(110 * (1 - kin) - 110 * kout).toFixed(2)}%)` });
+  });
+
+  const ks = spring(t - b(4), 2.0, 0.62);
+  const gap = 58;
+  const total = TOK.reduce((a, k) => a + k.s.length * CW, 0) + gap * (TOK.length - 1);
+  let cx = 960 - total / 2;
+  toks.forEach((k, i) => {
+    const w = k.s.length * CW;
+    const ux = X0 + k.at * CW;
+    let x = lerp(ux, cx, ks), y = 540 - S2FS / 2, rot = 0, op = 1, sc = 1;
+    cx += w + gap;
+    const kbx = E.outExpo(p(t, b(4) + 0.05 + i * 0.03, 0.4));
+    const isMonth = k.s === "10";
+    // exit: everything falls except the month, which turns blue and opens the next scene
+    if (!isMonth) {
+      const kf = E.inCubic(p(t, b(7) + i * 0.03, 0.42));
+      y += 560 * kf; rot = (i % 2 ? 1 : -1) * 24 * kf; op = 1 - kf;
+    } else {
+      sc = 1 + 0.32 * E.outBack(p(t, b(7), 0.32));
+    }
+    const fill = isMonth ? E.outExpo(p(t, b(7), 0.2)) : 0;
+    const col = isMonth ? mixc(mixc("#fafafa", k.c, kbx), "#ffffff", fill) : mixc("#fafafa", k.c, kbx);
+    const ccx = x + w / 2, ccy = y + S2FS / 2;
+    const tr = `translate(${px(ccx)},${px(ccy)}) rotate(${rot.toFixed(2)}deg) scale(${sc.toFixed(4)})`;
+    st(k.e, { transform: `${tr} translate(${px(-w / 2)},${px(-S2FS / 2)})`, color: col, opacity: op.toFixed(3), left: "0px", top: "0px" });
+    const bw = w + 36, bh = S2FS + 30;
+    st(k.box, {
+      width: px(bw), height: px(bh),
+      transform: `${tr} translate(${px(-bw / 2)},${px(-bh / 2)}) scale(${lerp(0.82, 1, kbx).toFixed(4)})`,
+      opacity: (kbx * op).toFixed(3), background: isMonth ? mixc("#16203a", C.blue, fill) : k.acc + "1f",
+    });
+    // labels
+    const kl = E.outExpo(p(t, b(5) + i * 0.055, 0.5));
+    const klo = p(t, b(7), 0.18);
+    st(k.line, { transform: `translate(${px(ccx - 1)},${px(ccy + bh / 2 + 6)}) scaleY(${kl.toFixed(4)})`, opacity: ((1 - klo) * kl).toFixed(3) });
+    st(k.lab, { transform: `translate(${px(ccx)},${px(ccy + bh / 2 + 56 + 18 * (1 - kl) + 30 * klo)}) translateX(-50%)`, opacity: (kl * (1 - klo)).toFixed(3) });
+    if (isMonth) s2.month = { x: ccx, y: ccy };
+  });
+}
+
+// ═════════════════════════ S3 · MAP (b8–b13): every bill × every month ═════════════════════════
+// The demo folder's bill matrix (report page 2): c = file found, c2 = two payments, d = due this month, x = missing, . = not expected
+const MATRIX = [
+  ["Car Loan", ". c c c c c c c c c d -"], ["Charity", ". . . . c . . . . . . -"], ["Credit Card", "c c c c c c c c c c d -"],
+  ["Electricity", "c c c c c x c c c c d -"], ["Gym", "c c c c c . . . . . . -"], ["Home Meter", ". . . . . . c c2 c c2 . -"],
+  ["Phone", "c c c c c c c c c c d -"], ["Property Tax", "c c . . . . . . . . . -"], ["Rent", "c c c c c c c c c c c -"],
+  ["Salary", "c c c c c c c c c c c -"], ["Streaming", "c c c c c c c c c c d -"], ["Water", "c c c c c c c c c x d -"],
+  ["Groceries Market", ". . c c c c c . . . . -"], ["Groceries Online", ". . c c . . . . c . . -"], ["HOA Invoice", "c . . c . . c . . c . -"],
+  ["HOA Payment", "c . . c . . c . . x . -"], ["Insurance Car", "c . . c . . c . . c . -"], ["Insurance Health", "c c c c c c c c c c d -"],
+  ["Insurance Life", "c . . . . . c . . . . -"], ["Internet Invoice", ". . c c c c c c c c d -"], ["Internet Payment", ". . c c c c c c c c d -"],
+  ["Internet Receipt", ". . c c c c c c c x d -"],
+].map(([n, s]) => [n, s.split(" ")]);
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const CARD = { w: 1330, h: 920, x: 295, y: 80, nameW: 300, colW: 74, top: 132, rowH: 35 };
+const s3cam = h("div", { cls: "abs", style: { width: "1920px", height: "1080px", perspective: "1500px", perspectiveOrigin: "960px 540px" } }, S3);
+const s3card = h("div", { cls: "abs", style: { left: CARD.x + "px", top: CARD.y + "px", width: CARD.w + "px", height: CARD.h + "px", background: "#fff", border: "1px solid #e4e4e7", borderRadius: "18px", boxShadow: "0 40px 120px -30px rgba(9,9,11,.25), 0 8px 24px -12px rgba(9,9,11,.12)", color: C.lfg, transformOrigin: "50% 50%" } }, s3cam);
+const nowCol = h("div", { cls: "abs", style: { left: CARD.nameW + 10 * CARD.colW + "px", top: "78px", width: CARD.colW + "px", height: CARD.h - 78 - 1 + "px", background: C.blueBg, transformOrigin: "50% 0", borderRadius: "0 0 0 0" } }, s3card);
+const s3title = h("div", { cls: "abs nw", style: { left: "30px", top: "24px", font: "700 30px/1 Inter", letterSpacing: "-0.02em" }, html: 'Bill matrix <span style="color:#a1a1aa;font-weight:500">2026</span>' }, s3card);
+const s3legend = h("div", { cls: "abs nw", style: { right: "30px", left: "auto", top: "30px", display: "flex", gap: "22px", font: "500 14px/1 Inter", color: "#71717a", alignItems: "center" }, html: `<span style="display:flex;gap:7px;align-items:center">${CHECK(15)}File found</span><span style="display:flex;gap:7px;align-items:center">${DUE(15)}Due this month</span><span style="display:flex;gap:7px;align-items:center">${MISS(14)}Missing</span>` }, s3card);
+const hdrLine = h("div", { cls: "abs", style: { left: "0px", top: "78px", width: CARD.w + "px", height: "1px", background: "#e4e4e7", transformOrigin: "0 0" } }, s3card);
+const hdrBill = h("div", { cls: "abs nw", style: { left: "30px", top: "100px", font: "600 12.5px/1 Inter", letterSpacing: ".1em", color: "#71717a" }, text: "BILL" }, s3card);
+const hdrTotal = h("div", { cls: "abs nw", style: { left: CARD.nameW + 12 * CARD.colW + "px", width: "120px", textAlign: "center", top: "100px", font: "600 12.5px/1 Inter", letterSpacing: ".1em", color: "#71717a" }, text: "TOTAL" }, s3card);
+const hdrMonths = MONTHS.map((m, j) => h("div", { cls: "abs nw", style: { left: CARD.nameW + j * CARD.colW + "px", width: CARD.colW + "px", textAlign: "center", top: j === 10 ? "92px" : "100px", font: "600 12.5px/1.25 Inter", letterSpacing: ".1em", color: j === 11 ? "#d4d4d8" : "#71717a" }, html: m.toUpperCase() + (j === 10 ? '<br><span style="font-size:9.5px;letter-spacing:.12em">NOW</span>' : "") }, s3card));
+const rows = MATRIX.map(([name, cells], r) => {
+  const y = CARD.top + r * CARD.rowH;
+  const line = h("div", { cls: "abs", style: { left: "18px", top: y + CARD.rowH + "px", width: CARD.w - 36 + "px", height: "1px", background: "#f4f4f5", transformOrigin: "0 0" } }, s3card);
+  const label = h("div", { cls: "abs nw", style: { left: "30px", top: y + 9 + "px", font: "400 15.5px/1.1 Inter", color: "#18181b" }, text: name }, s3card);
+  const total = h("div", { cls: "abs nw", style: { left: CARD.nameW + 12 * CARD.colW + "px", width: "120px", textAlign: "center", top: y + 9 + "px", font: "600 15.5px/1.1 Inter", fontVariantNumeric: "tabular-nums" } }, s3card);
+  const cellEls = cells.map((c, j) => {
+    const cx = CARD.nameW + j * CARD.colW + CARD.colW / 2, cy = y + CARD.rowH / 2;
+    let html = "";
+    if (c.startsWith("c")) html = CHECK(21) + (c === "c2" ? '<span style="position:absolute;left:18px;top:-6px;font:700 11px/1 Inter;color:#15803d">2</span>' : "");
+    else if (c === "d") html = DUE(21);
+    else if (c === "x") html = MISS(19);
+    else if (c === ".") html = '<i style="display:block;width:4px;height:4px;border-radius:2px;background:#d4d4d8"></i>';
+    else return null;
+    const e = h("div", { cls: "abs", style: { left: cx + "px", top: cy + "px" }, html }, s3card);
+    const inner = e.firstElementChild;
+    const sz = c === "." ? 4 : c === "x" ? 19 : 21;
+    let ring = null;
+    if (c === "x") ring = h("div", { cls: "abs", style: { left: cx - 16 + "px", top: cy - 16 + "px", width: "32px", height: "32px", borderRadius: "50%", border: "2px solid #e11d48", opacity: 0 } }, s3card);
+    return { e, c, j, sz, ring, hand: e.querySelector(".hand") };
+  });
+  return { name, cells, line, label, total, cellEls, r };
+});
+let dueIdx = 0, missIdx = 0;
+rows.forEach((row) => row.cellEls.forEach((ce) => { if (!ce) return; if (ce.c === "d") ce.k = dueIdx++; if (ce.c === "x") ce.k = missIdx++; }));
+const s3dCell = (r, j) => b(8) - 0.12 + j * 0.05 + r * 0.018;
+
+function s3(t, month) {
+  // circle reveal out of the blue month token
+  const kr = E.inOutExpo(p(t, b(7.32), b(8.05) - b(7.32)));
+  const R = lerp(0, 2300, kr);
+  st(S3, { clipPath: t < b(8.1) ? `circle(${px(R)} at ${px(month.x)} ${px(month.y)})` : "none" });
+  // camera: tilted and close, settling flat by b12.6; a knock on the missing files
+  const kc = E.outCubic(p(t, b(7.35), b(12.6) - b(7.35)));
+  const rx = lerp(50, 0, kc), rz = lerp(-15, 0, kc), sc = lerp(1.55, 0.985, kc), ty = lerp(190, 0, kc), tz = lerp(0, 0, kc);
+  const sh = shake(t, b(12), 7, 24, 10);
+  st(s3card, { transform: `translate3d(${px(sh)},${px(ty + shake(t, b(12), 4, 19, 10))},${px(tz)}) rotateX(${rx.toFixed(3)}deg) rotateZ(${rz.toFixed(3)}deg) scale(${sc.toFixed(4)})` });
+
+  st(hdrLine, { transform: `scaleX(${E.outExpo(p(t, b(7.5), 0.6)).toFixed(4)})` });
+  const kh = E.outExpo(p(t, b(7.7), 0.5));
+  for (const e of [s3title, hdrBill, hdrTotal]) st(e, { opacity: kh.toFixed(3), transform: `translateY(${px(10 * (1 - kh))})` });
+  st(s3legend, { opacity: E.outExpo(p(t, b(9.6), 0.5)).toFixed(3), transform: `translateX(${px(20 * (1 - E.outExpo(p(t, b(9.6), 0.5))))})` });
+  hdrMonths.forEach((e, j) => {
+    const k = E.outExpo(p(t, b(7.8) + j * 0.03, 0.4));
+    const nowK = j === 10 ? E.outExpo(p(t, b(10), 0.3)) : 0;
+    st(e, { opacity: k.toFixed(3), transform: `translateY(${px(12 * (1 - k))})`, color: j === 10 ? mixc("#71717a", C.blue, nowK) : e.style.color });
+  });
+  const kn = E.outExpo(p(t, b(10), 0.42));
+  st(nowCol, { transform: `scaleY(${kn.toFixed(4)})`, opacity: kn > 0 ? "1" : "0" });
+
+  for (const row of rows) {
+    const r = row.r;
+    st(row.line, { transform: `scaleX(${E.outExpo(p(t, b(7.6) + r * 0.014, 0.6)).toFixed(4)})` });
+    const kl = E.outExpo(p(t, b(7.8) + r * 0.016, 0.45));
+    st(row.label, { opacity: kl.toFixed(3), transform: `translateX(${px(-24 * (1 - kl))})` });
+    let count = 0;
+    for (const ce of row.cellEls) {
+      if (!ce) continue;
+      const half = ce.sz / 2;
+      if (ce.c.startsWith("c") || ce.c === ".") {
+        const d = s3dCell(r, ce.j);
+        if (ce.c.startsWith("c")) {
+          const s = spring(t - d, 3.1, 0.48);
+          if (t > d + 0.03) count++;
+          st(ce.e, { transform: `translate(${-half}px,${-half}px) scale(${Math.max(0, s).toFixed(4)}) rotate(${(-50 * (1 - s)).toFixed(2)}deg)`, opacity: clamp((t - d) * 14).toFixed(3) });
+        } else {
+          st(ce.e, { transform: `translate(-2px,-2px)`, opacity: clamp((t - d) * 5).toFixed(3) });
+        }
+      } else if (ce.c === "d") {
+        const d = b(11) + ce.k * 0.03;
+        const s = spring(t - d, 2.8, 0.45);
+        st(ce.e, { transform: `translate(${-half}px,${-half}px) scale(${Math.max(0, s).toFixed(4)})`, opacity: clamp((t - d) * 12).toFixed(3) });
+        if (ce.hand) st(ce.hand, { transform: `rotate(${(-360 * (1 - E.outCubic(p(t, d, 0.6)))).toFixed(1)}deg)` });
+      } else if (ce.c === "x") {
+        const d = b(12) + ce.k * 0.07;
+        const k = E.outExpo(p(t, d, 0.3));
+        st(ce.e, { transform: `translate(${-half}px,${-half}px) scale(${(1 + 1.7 * (1 - k)).toFixed(4)})`, opacity: clamp((t - d) * 16).toFixed(3) });
+        const kr2 = p(t, d, 0.5);
+        st(ce.ring, { transform: `scale(${(0.6 + 1.9 * E.outCubic(kr2)).toFixed(4)})`, opacity: (t > d ? (1 - kr2) * 0.9 : 0).toFixed(3) });
+      }
+    }
+    row.total.textContent = count ? String(count) : "";
+  }
+}
+
+// ═════════════════════════ S4 · FLAG (b13–b16): paid, due, missing — on the fill ═════════════════════════
+// S5's report sits at (320, 88), unscaled, at b16: the panels shrink into its card and pills.
+const PAGE = { x: 320, y: 88 };
+const PANELS = [
+  { color: C.green, under: "#14532d", to: "#ffffff", eyebrow: "Paid in November", num: "3", suffix: "/14", cap: "11 still due this month", rect: [49, 156, 283, 125, 14], glyph: "M30 52 L44 66 L72 36" },
+  { color: C.amber, under: "#78350f", to: C.amberBg, eyebrow: "Due this month", num: "11", suffix: "", cap: "Car Loan · Credit Card · Phone · Water …", rect: [1058, 73, 94, 26, 13], glyph: "M51 30 V52 L64 60" },
+  { color: C.rose, under: "#881337", to: C.roseBg, eyebrow: "Missing files", num: "4", suffix: "", cap: "paid but not uploaded, or not paid?", rect: [1162, 73, 75, 26, 13], glyph: "M36 36 L66 66 M66 36 L36 66" },
+];
+function odometer(parent, digits, size) {
+  const wrap = h("span", { style: { display: "inline-flex", fontVariantNumeric: "tabular-nums" } }, parent);
+  return digits.split("").map((d) => {
+    const col = h("span", { style: { display: "inline-block", height: "1em", overflow: "hidden", lineHeight: "1" } }, wrap);
+    const strip = h("span", { style: { display: "block" } }, col);
+    for (let k = 0; k < 30; k++) h("span", { style: { display: "block", height: "1em" }, text: String(k % 10) }, strip);
+    return { strip, d: +d };
+  });
+}
+const panels = PANELS.map((P, i) => {
+  const under = h("div", { cls: "abs", style: { width: "640px", height: "1080px", left: i * 640 + "px", background: P.under } }, S4);
+  const box = h("div", { cls: "abs", style: { width: "640px", height: "1080px", left: "0px", background: P.color, overflow: "hidden" } }, S4);
+  const inner = h("div", { cls: "abs", style: { width: "640px", height: "1080px", color: "#fff" } }, box);
+  const icon = h("div", { cls: "abs", style: { left: "270px", top: "196px", width: "100px", height: "100px" }, html: `<svg width="100" height="100" viewBox="0 0 102 102"><circle cx="51" cy="51" r="47" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="3"/><circle class="ring" cx="51" cy="51" r="47" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="296" stroke-dashoffset="296" transform="rotate(-90 51 51)"/><path class="gl" d="${P.glyph}" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></svg>` }, inner);
+  const eyebrow = h("div", { cls: "abs mono nw", style: { left: "320px", top: "352px", fontSize: "17px", letterSpacing: ".2em", textTransform: "uppercase", opacity: 0.85 }, text: P.eyebrow }, inner);
+  const numWrap = h("div", { cls: "abs nw", style: { left: "320px", top: "410px", font: "800 330px/1 Inter", letterSpacing: "-0.06em", display: "flex", alignItems: "baseline" } }, inner);
+  const odo = odometer(numWrap, P.num, 330);
+  if (P.suffix) h("span", { style: { fontSize: "120px", fontWeight: 700, opacity: 0.72, letterSpacing: "-0.03em", marginLeft: "8px" }, text: P.suffix }, numWrap);
+  const cap = h("div", { cls: "abs nw", style: { left: "320px", top: "790px", font: "500 22px/1.3 Inter", opacity: 0.9 }, text: P.cap }, inner);
+  return { ...P, under, box, inner, icon, ring: icon.querySelector(".ring"), gl: icon.querySelector(".gl"), eyebrow, numWrap, odo, cap, i };
+});
+
+function s4(t) {
+  for (const P of panels) {
+    const t0 = b(13 + P.i), dir = P.i === 1 ? 1 : -1;
+    const ke = E.outExpo(p(t, t0, 0.42)), ku = E.outExpo(p(t, t0 - 0.05, 0.42));
+    // morph into the report (lands on the downbeat at b16)
+    const km = E.inOutExpo(p(t, b(15.5), b(16) - b(15.5)));
+    const [rx, ry, rw, rh, rr] = P.rect;
+    const x = lerp(P.i * 640, PAGE.x + rx, km), y = lerp(dir * 1080 * (1 - ke), PAGE.y + ry, km);
+    const w = lerp(640, rw, km), hh = lerp(1080, rh, km);
+    st(P.box, { transform: `translate(${px(x)},${px(y)})`, width: px(w), height: px(hh), borderRadius: px(lerp(0, rr, km)), background: mixc(P.color, P.to, E.inCubic(km)), opacity: t < t0 ? "0" : "1" });
+    st(P.under, { transform: `translateY(${px(dir * 1080 * (1 - ku))})`, opacity: (t < t0 - 0.05 ? 0 : 1 - p(t, b(15.4), 0.1)).toFixed(3) });
+    // content
+    const kc = 1 - p(t, b(15.5), 0.12);
+    st(P.inner, { opacity: kc.toFixed(3), transform: `translate(${px((w - 640) / 2)},${px((hh - 1080) / 2)}) scale(${lerp(1, 0.6, km).toFixed(4)})`, transformOrigin: "320px 540px" });
+    const ki = E.outExpo(p(t, t0 + 0.08, 0.5));
+    at(P.ring, { "stroke-dashoffset": (296 * (1 - E.outCubic(p(t, t0 + 0.05, 0.55)))).toFixed(2) });
+    at(P.gl, { "stroke-dashoffset": (1 - E.outCubic(p(t, t0 + 0.16, 0.3))).toFixed(4) });
+    st(P.icon, { transform: `scale(${lerp(0.6, 1, E.outBack(p(t, t0 + 0.04, 0.4))).toFixed(4)})`, opacity: ki.toFixed(3) });
+    st(P.eyebrow, { transform: `translateX(-50%) translateY(${px(24 * (1 - ki))})`, opacity: (ki * 0.85).toFixed(3) });
+    const kn = E.outExpo(p(t, t0 + 0.02, 0.62));
+    st(P.numWrap, { transform: `translateX(-50%) translateY(${px(60 * (1 - E.outExpo(p(t, t0, 0.5))))})` });
+    P.odo.forEach((o, k) => {
+      const kk = E.outExpo(p(t, t0 + 0.02 + k * 0.04, 0.4));
+      st(o.strip, { transform: `translateY(${(-(o.d + 20) * kk).toFixed(4)}em)` });
+    });
+    const kcap = E.outExpo(p(t, t0 + 0.2, 0.5));
+    st(P.cap, { transform: `translateX(-50%) translateY(${px(20 * (1 - kcap))})`, opacity: (kcap * 0.9).toFixed(3) });
+  }
+}
+
+// ═════════════════════════ S5 · REPORT (b16–b21): the PDF builds itself ═════════════════════════
+const s5cam = h("div", { cls: "abs", style: { width: "1920px", height: "1080px", perspective: "2400px", perspectiveOrigin: "960px 540px" } }, S5);
+const s5rig = h("div", { cls: "abs", style: { left: PAGE.x + "px", top: PAGE.y + "px", width: "1280px", height: "905px", transformStyle: "preserve-3d", transformOrigin: "640px 452px" } }, s5cam);
+const pageImgs = [6, 5, 4, 3, 2].map((n) => {
+  const wrap = h("div", { cls: "abs", style: { width: "1280px", height: "905px", background: "#fff", overflow: "hidden", boxShadow: "0 50px 120px -30px rgba(0,0,0,.7)", transformOrigin: "50% 150%" } }, s5rig);
+  h("img", { src: `../../../out/motion-demo/pages/page-${n}.png`, style: { width: "1280px", height: "905px", display: "block" } }, wrap);
+  // the footer's source path is the machine's; the "USD 0 a kWh" lines are a known rounding bug (see ../README.md)
+  h("div", { cls: "abs", style: { left: "40px", top: "862px", width: "700px", height: "34px", background: "#fff" } }, wrap);
+  if (n === 4) { h("div", { cls: "abs", style: { left: "668px", top: "243px", width: "120px", height: "18px", background: "#fff" } }, wrap); h("div", { cls: "abs", style: { left: "1120px", top: "648px", width: "100px", height: "16px", background: "#fff" } }, wrap); }
+  return { wrap, n };
+});
+const page = h("div", { cls: "abs page", style: { boxShadow: "0 60px 140px -30px rgba(0,0,0,.75)", transformOrigin: "50% 150%", overflow: "hidden" } }, s5rig);
+page.innerHTML = `
+<div class="abs nw" style="left:49px;top:48px;font:600 12px/1 Inter;letter-spacing:.16em;color:#71717a">PERSONAL FILE MAP</div>
+<div class="abs nw" style="left:47px;top:66px;font:700 40px/1.15 Inter;letter-spacing:-0.025em">November 2026</div>
+<div class="abs nw" style="left:49px;top:117px;font:400 14px/1 Inter;color:#71717a">24 bills · 20 scheduled · 3 irregular · 1 not scheduled · 178 files</div>
+<div class="abs nw" style="left:auto;right:43px;top:48px;font:400 12.5px/1 Inter;color:#71717a">Generated Tue, 10 Nov 2026 at 12:00</div>
+<div id="pDue" class="abs pill" style="left:1058px;top:73px;width:94px;height:26px;background:#fef3c7;color:#b45309;font-size:13px">11 due in Nov</div>
+<div id="pMiss" class="abs pill" style="left:1162px;top:73px;width:75px;height:26px;background:#ffe4e6;color:#be123c;font-size:13px">4 missing</div>
+
+<div id="c1" class="card" style="left:49px;top:156px;width:283px;height:125px">
+  <div class="abs lbl" style="left:21px;top:16px">Paid in November</div><div class="ic">${ICON.calendar}</div>
+  <div class="abs nw" style="left:21px;top:44px;font:600 34px/1 Inter">3<span style="font-size:20px;color:#71717a;font-weight:500"> / 14</span></div>
+  <div class="bar" style="left:21px;top:86px;width:240px"><i id="b1" style="width:21.4%"></i></div>
+  <div class="abs sub" style="left:21px;top:100px;font-size:12px">11 still due this month</div>
+</div>
+<div id="c2" class="card" style="left:351px;top:156px;width:283px;height:125px">
+  <div class="abs lbl" style="left:21px;top:16px">Missing files</div><div class="ic">${ICON.warn}</div>
+  <div id="n4" class="abs nw" style="left:21px;top:44px;font:600 34px/1 Inter;color:#be123c;transform-origin:0 100%">4</div>
+  <div class="abs nw" style="left:21px;top:86px;font-size:12px;color:#3f3f46">across 4 bills</div>
+  <div class="abs nw" style="left:21px;top:102px;font-size:12px;color:#a1a1aa">expected months without a file</div>
+</div>
+<div id="c3" class="card" style="left:652px;top:156px;width:283px;height:125px">
+  <div class="abs lbl" style="left:21px;top:16px">Year-to-date coverage</div><div class="ic">${ICON.trend}</div>
+  <div id="n97" class="abs nw" style="left:21px;top:44px;font:600 34px/1 Inter;font-variant-numeric:tabular-nums">97%</div>
+  <div class="bar" style="left:21px;top:86px;width:240px"><i id="b97" style="width:97.3%"></i></div>
+  <div class="abs sub" style="left:21px;top:100px;font-size:12px">145 of 149 expected files</div>
+</div>
+<div id="c4" class="card" style="left:954px;top:156px;width:283px;height:125px">
+  <div class="abs lbl" style="left:21px;top:16px">Latest upload</div><div class="ic">${ICON.upload}</div>
+  <div class="abs nw" style="left:21px;top:46px;font:600 30px/1 Inter">Yesterday</div>
+  <div class="abs nw" style="left:21px;top:84px;font-size:12px;color:#3f3f46">Salary</div>
+  <div class="abs nw" style="left:21px;top:101px;font-size:12px;color:#a1a1aa">Nov 2026 · .png</div>
+</div>
+
+<div id="c5" class="card" style="left:49px;top:299px;width:727px;height:537px">
+  <div class="abs h2 nw" style="left:24px;top:22px">Still due in November <span class="pill" style="height:20px;padding:0 8px;margin-left:6px;background:#fef3c7;color:#b45309;font-size:11.5px;vertical-align:2px">11</span></div>
+  <div class="abs sub nw" style="left:24px;top:48px">Scheduled bills with no file for this month yet</div>
+  <div id="chips" class="abs" style="left:24px;top:74px;width:690px;display:flex;flex-wrap:wrap;gap:6px 8px"></div>
+  <div class="abs" style="left:24px;top:140px;width:679px;height:1px;background:#f4f4f5"></div>
+  <div class="abs h2 nw" style="left:24px;top:158px">Missing files <span class="pill" style="height:20px;padding:0 8px;margin-left:6px;background:#ffe4e6;color:#be123c;font-size:11.5px;vertical-align:2px">4</span></div>
+  <div class="abs sub nw" style="left:24px;top:184px">Scheduled past months with no file: paid but not uploaded, or not paid?</div>
+  <div id="miss" class="abs" style="left:24px;top:206px;width:340px"></div>
+</div>
+
+<div id="c6" class="card" style="left:795px;top:299px;width:442px;height:241px">
+  <div class="abs h2 nw" style="left:23px;top:22px">Bills with a file, per month</div><div class="ic" style="top:20px">${ICON.chart}</div>
+  <div class="abs sub nw" style="left:23px;top:48px">Peak: April with 20</div>
+  <div id="bars" class="abs" style="left:0;top:0;width:442px;height:241px"></div>
+</div>
+
+<div id="c7" class="card" style="left:795px;top:559px;width:442px;height:277px">
+  <div class="abs h2 nw" style="left:23px;top:22px">Highlights</div><div class="ic" style="top:20px">${ICON.sparkle}</div>
+  <div id="hl" class="abs" style="left:23px;top:52px;width:396px"></div>
+</div>
+<div class="abs nw" style="left:49px;top:872px;font:400 11px/1 Inter;color:#a1a1aa"><b style="color:#71717a;font-weight:600">Source</b>&nbsp;&nbsp;/Users/demo/Bills/2026</div>
+<div class="abs nw" style="left:auto;right:43px;top:872px;font:400 11px/1 Inter;color:#a1a1aa">Page 1 of 6</div>
+<div id="shine" class="abs" style="left:-600px;top:-200px;width:420px;height:1400px;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.65),rgba(255,255,255,0));transform:rotate(18deg);mix-blend-mode:screen;opacity:0"></div>`;
+const $ = (id) => page.querySelector("#" + id);
+const pc = ["c1", "c2", "c3", "c4", "c5", "c6", "c7"].map($);
+const pDue = $("pDue"), pMiss = $("pMiss"), b1 = $("b1"), b97 = $("b97"), n97 = $("n97"), n4 = $("n4"), shine = $("shine");
+const CHIPS = ["Car Loan", "Credit Card", "Electricity", "Phone", "Streaming", "Water", "Insurance Health", "Internet Invoice", "Internet Payment", "Internet Receipt", "Mortgage Received"];
+const chips = CHIPS.map((c) => h("span", { cls: "chip", text: c }, $("chips")));
+const MISSING = [["Electricity", "Jun"], ["HOA Payment", "Oct"], ["Internet Receipt", "Oct"], ["Water", "Oct"]];
+const missRows = MISSING.map(([n, m], i) => h("div", { cls: "abs nw", style: { left: "0", top: 4 + i * 21 + "px", width: "340px", display: "flex", alignItems: "center", gap: "8px", fontSize: "13px" }, html: `${MISS(11)}<span>${n}</span><span style="position:absolute;left:300px;color:#be123c;font-weight:600;font-size:12px">${m}</span>` }, $("miss")));
+const BARS = [14, 11, 17, 20, 17, 14, 20, 15, 16, 15, 3];
+const barEls = BARS.map((v, i) => {
+  const cx = 40 + i * 32.8, hgt = v * 6.25;
+  const bar = h("div", { cls: "abs", style: { left: cx - 9.5 + "px", top: 207 - hgt + "px", width: "19px", height: hgt + "px", background: i === 10 ? C.blue : "#3f3f46", borderRadius: "3px 3px 1px 1px", transformOrigin: "50% 100%" } }, $("bars"));
+  const lab = h("div", { cls: "abs nw", style: { left: cx + "px", top: 207 - hgt - 16 + "px", font: "500 11px/1 Inter", color: i === 10 ? C.blue : "#3f3f46", transform: "translateX(-50%)" }, text: String(v) }, $("bars"));
+  return { bar, lab, v, hgt };
+});
+"JFMAMJJASOND".split("").forEach((m, i) => h("div", { cls: "abs nw", style: { left: 40 + i * 32.8 + "px", top: "216px", font: `${i === 10 ? 600 : 400} 12px/1 Inter`, color: i === 10 ? C.blue : i === 11 ? "#d4d4d8" : "#71717a", transform: "translateX(-50%)" }, text: m }, $("bars")));
+h("div", { cls: "abs", style: { left: "22px", top: "207px", width: "398px", height: "1px", background: "#e4e4e7" } }, $("bars"));
+const HL = [["Longest streak", "Rent · 11 months in a row"], ["Up to date", "16 of 20 scheduled bills"], ["Files this year", "178  (87 PDF · 91 images)"], ["Never flagged", "3 irregular · 1 not scheduled"]];
+const hlRows = HL.map(([a, v], i) => h("div", { cls: "abs nw", style: { left: "0", top: 4 + i * 24.5 + "px", width: "396px", height: "24px", borderBottom: "1px solid #f4f4f5", fontSize: "13px" }, html: `<span style="color:#71717a">${a}</span><span style="position:absolute;right:0;font-weight:600">${v}</span>` }, $("hl")));
+const hk = h("div", { cls: "abs", style: { left: "0", top: "116px", width: "396px", fontSize: "12px", lineHeight: "17px" }, html: `<div style="font:600 14px/1 Inter;margin-bottom:9px">Housekeeping <span class="pill" style="height:18px;padding:0 7px;margin-left:4px;background:#f4f4f5;color:#3f3f46;font-size:11px">4</span></div><div><b style="font-weight:500">config.local.json</b> <span style="color:#71717a">created from the settings window</span></div><div><b style="font-weight:500">202512 Rent.pdf</b> <span style="color:#71717a">dated 2025, not 2026</span></div><div><b style="font-weight:500">202600 Water.pdf</b> <span style="color:#71717a">month "00" isn't 01–12</span></div><div><b style="font-weight:500">notes.txt</b> <span style="color:#71717a">.txt files aren't supported</span></div>` }, $("hl"));
+
+function s5(t) {
+  // camera: flat at b16 (where the panels land), a slow orbit, then the fan
+  const kd = E.inOutCubic(p(t, b(16.25), b(20) - b(16.25)));
+  const kf = spring(t - b(20), 1.7, 0.78);
+  const kz = E.inExpo(p(t, b(20.55), b(21) - b(20.55)));
+  const ry = lerp(-10 * kd, 0, clamp(kf)), rx = lerp(6 * kd, 0, clamp(kf)), sc = lerp(1 + 0.04 * kd, 0.56, kf);
+  st(s5rig, { transform: `translate3d(${px(lerp(34 * kd, 0, clamp(kf)))},${px(lerp(0, 40, clamp(kf)))},0) rotateX(${rx.toFixed(3)}deg) rotateY(${ry.toFixed(3)}deg) scale(${sc.toFixed(4)})` });
+  // six pages fan out; page 4 (electricity) flies at the camera
+  const all = [...pageImgs.map((pi) => ({ el: pi.wrap, n: pi.n })), { el: page, n: 1 }];
+  for (const { el, n } of all) {
+    const k = n - 1, off = k - 2.5;
+    let tr = `rotateZ(${(off * 7.5 * kf).toFixed(3)}deg) translate3d(${px(off * 165 * kf)},${px(Math.abs(off) * 22 * kf)},${px(-k * 2)})`;
+    let op = 1;
+    if (n === 4) {
+      tr = `translate3d(${px(lerp(0, -off * 165, kz))},${px(lerp(0, -260, kz))},${px(lerp(0, 1900, kz))}) ` + tr.replace(/rotateZ\([^)]*\)/, `rotateZ(${(off * 7.5 * kf * (1 - kz)).toFixed(3)}deg)`);
+    } else {
+      tr = `translate3d(${px(Math.sign(off) * 1700 * kz)},${px(200 * kz)},0) rotateZ(${(Math.sign(off) * 30 * kz).toFixed(2)}deg) ` + tr;
+      op = 1 - kz;
+    }
+    if (n !== 1) vis(el, t > b(19.9));
+    st(el, { transform: tr, opacity: op.toFixed(3) });
+  }
+  // build
+  const pill = (e) => st(e, { opacity: t >= b(16) - 0.001 ? "1" : "0" });
+  pill(pDue); pill(pMiss);
+  pc.forEach((c, i) => {
+    if (i === 0) { st(c, { opacity: t >= b(16) - 0.001 ? "1" : "0" }); return; }
+    const k = spring(t - (b(15.62) + i * 0.055), 2.4, 0.7);
+    st(c, { opacity: clamp(k * 3).toFixed(3), transform: `translateY(${px(36 * (1 - k))})` });
+  });
+  st(b1, { transform: `scaleX(${E.outExpo(p(t, b(16.05), 0.7)).toFixed(4)})` });
+  const k97 = E.outExpo(p(t, b(16.2), 0.9));
+  n97.textContent = Math.round(97 * k97) + "%";
+  st(b97, { transform: `scaleX(${k97.toFixed(4)})` });
+  st(n4, { transform: `scale(${(1 + 0.5 * (1 - E.outBack(p(t, b(16.3), 0.4)))).toFixed(4)})` });
+  chips.forEach((c, i) => { const k = spring(t - (b(16.6) + i * 0.032), 3, 0.55); st(c, { transform: `scale(${Math.max(0, k).toFixed(4)})`, opacity: clamp(k * 4).toFixed(3) }); });
+  missRows.forEach((r, i) => { const k = E.outExpo(p(t, b(17.1) + i * 0.05, 0.45)); st(r, { transform: `translateX(${px(-30 * (1 - k))})`, opacity: k.toFixed(3) }); });
+  barEls.forEach((bb, i) => {
+    const d = b(17.5) + i * 0.045 + (i === 10 ? 0.12 : 0);
+    const k = spring(t - d, 2.6, 0.5);
+    st(bb.bar, { transform: `scaleY(${Math.max(0, k).toFixed(4)})` });
+    st(bb.lab, { transform: `translateX(-50%) translateY(${px(bb.hgt * (1 - k))})`, opacity: clamp((t - d) * 6).toFixed(3) });
+  });
+  hlRows.forEach((r, i) => { const k = E.outExpo(p(t, b(18.1) + i * 0.05, 0.45)); st(r, { transform: `translateY(${px(14 * (1 - k))})`, opacity: k.toFixed(3) }); });
+  { const k = E.outExpo(p(t, b(18.5), 0.5)); st(hk, { opacity: k.toFixed(3), transform: `translateY(${px(14 * (1 - k))})` }); }
+  const ksh = p(t, b(19), 0.65);
+  st(shine, { transform: `translateX(${px(lerp(0, 2300, E.inOutCubic(ksh)))}) rotate(18deg)`, opacity: (ksh > 0 && ksh < 1 ? 1 : 0).toFixed(3) });
+}
+
+// ═════════════════════════ S6 · READ (b21–b27): meter photos → kWh ═════════════════════════
+// Seven-segment digits on an odometer strip
+const SEG = { a: [10, 0, 40, 10, "h"], b: [50, 6, 10, 46, "v"], c: [50, 58, 10, 46, "v"], d: [10, 100, 40, 10, "h"], e: [0, 58, 10, 46, "v"], f: [0, 6, 10, 46, "v"], g: [10, 50, 40, 10, "h"] };
+const DIG = ["abcdef", "bc", "abged", "abgcd", "fgbc", "afgcd", "afgedc", "abc", "abcdefg", "abcdfg"];
+const segPoly = ([x, y, w, hh, o]) => o === "h" ? `${x + hh / 2},${y} ${x + w - hh / 2},${y} ${x + w},${y + hh / 2} ${x + w - hh / 2},${y + hh} ${x + hh / 2},${y + hh} ${x},${y + hh / 2}` : `${x + w / 2},${y} ${x + w},${y + w / 2} ${x + w},${y + hh - w / 2} ${x + w / 2},${y + hh} ${x},${y + hh - w / 2} ${x},${y + w / 2}`;
+const digitSVG = (d, on, off) => `<svg width="64" height="118" viewBox="-2 -4 64 118" style="display:block"><g transform="skewX(-7) translate(7,0)">${Object.keys(SEG).map((s) => `<polygon points="${segPoly(SEG[s])}" fill="${DIG[d].includes(s) ? on : off}"/>`).join("")}</g></svg>`;
+const s6dev = h("div", { cls: "abs", style: { left: "640px", top: "210px", width: "640px", height: "540px", transformOrigin: "320px 270px" } }, S6);
+s6dev.innerHTML = `
+<div class="abs" style="width:640px;height:540px;border-radius:52px;background:linear-gradient(160deg,#f5f5f4 0%,#e7e5e4 45%,#c9c6c3 100%);box-shadow:0 60px 120px -30px rgba(0,0,0,.8), inset 0 2px 0 rgba(255,255,255,.8), inset 0 -6px 14px rgba(0,0,0,.12)"></div>
+<div class="abs mono nw" style="left:64px;top:30px;font:600 13px/1 RMono,monospace;letter-spacing:.2em;color:#78716c">PREPAID · kWh</div>
+<div class="abs" style="left:588px;top:28px;width:14px;height:14px;border-radius:50%;background:#ef4444;box-shadow:0 0 12px #ef4444"></div>
+<div id="lcd" class="abs" style="left:56px;top:58px;width:528px;height:206px;border-radius:20px;background:linear-gradient(180deg,#c4cdb2,#a9b496);box-shadow:inset 0 6px 16px rgba(0,0,0,.28), inset 0 -2px 0 rgba(255,255,255,.4);overflow:hidden">
+  <div id="digits" class="abs" style="left:38px;top:44px;display:flex;align-items:flex-end;gap:6px"></div>
+  <div class="abs mono" style="left:452px;top:140px;font:600 22px/1 RMono,monospace;color:#2a3322">kWh</div>
+  <div id="scan" class="abs" style="left:0;top:0;width:528px;height:46px;background:linear-gradient(180deg,rgba(167,139,250,0),rgba(167,139,250,.85) 60%,rgba(237,233,254,1) 70%,rgba(167,139,250,0));opacity:0"></div>
+  <div id="lflash" class="abs" style="left:0;top:0;width:528px;height:206px;background:#fff;opacity:0"></div>
+</div>
+<div id="keys" class="abs" style="left:56px;top:298px;width:528px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px 18px"></div>
+<div id="ret" class="abs" style="left:56px;top:58px;width:528px;height:206px"></div>
+<div id="chip" class="abs nw" style="left:356px;top:-62px;padding:10px 16px 10px 14px;border-radius:14px;background:#1e1036;border:1px solid #5b21b6;box-shadow:0 20px 40px -10px rgba(76,29,149,.6);transform-origin:20% 100%">
+  <div style="display:flex;gap:8px;align-items:center;font:500 13px/1 Inter;color:#c4b5fd"><span style="width:14px;height:14px;display:inline-block">${ICON.sparkle}</span>Claude · claude-haiku-5-5</div>
+  <div style="font:600 22px/1 Inter;color:#f5f3ff;margin-top:8px;font-variant-numeric:tabular-nums"><span style="color:#a78bfa;font-weight:500;font-size:15px">Balance&nbsp;</span><span id="chipV">72.52</span> <span style="font-size:15px;color:#a78bfa;font-weight:500">kWh</span></div>
+</div>
+<div id="plus" class="abs nw" style="left:470px;top:150px;padding:8px 16px;border-radius:999px;background:#052e16;border:1px solid #166534;font:700 26px/1 Inter;color:#4ade80;font-variant-numeric:tabular-nums">+250.00 kWh</div>`;
+const lcd = s6dev.querySelector("#lcd"), scan = s6dev.querySelector("#scan"), lflash = s6dev.querySelector("#lflash"), chip = s6dev.querySelector("#chip"), chipV = s6dev.querySelector("#chipV"), plus = s6dev.querySelector("#plus"), ret = s6dev.querySelector("#ret");
+for (let k = 0; k < 12; k++) h("div", { style: { height: "38px", borderRadius: "10px", background: "linear-gradient(180deg,#fafaf9,#e7e5e4)", border: "1px solid #c8c5c2", boxShadow: "0 2px 0 #b8b5b2", font: "600 15px/38px Inter", color: "#78716c", textAlign: "center" }, text: "123A456B789*0#"[k] || "" }, s6dev.querySelector("#keys"));
+// slots: 0 7 2 . 5 2  →  3 2 2 . 5 2
+const slotFrom = [null, 0, 7, 2, ".", 5, 2], slotTo = [null, 3, 2, 2, ".", 5, 2];
+const digitsEl = s6dev.querySelector("#digits");
+const slots = [];
+for (let i = 1; i < slotFrom.length; i++) {
+  if (slotFrom[i] === ".") { h("div", { style: { width: "14px", height: "14px", borderRadius: "3px", background: "#1c2318", marginBottom: "2px", transform: "skewX(-7deg)" } }, digitsEl); continue; }
+  const col = h("div", { style: { position: "relative", width: "64px", height: "118px", overflow: "hidden" } }, digitsEl);
+  h("div", { cls: "abs", html: digitSVG(8, "rgba(28,35,24,.07)", "rgba(28,35,24,.07)") }, col);
+  const strip = h("div", { cls: "abs" }, col);
+  for (let k = 0; k < 30; k++) strip.insertAdjacentHTML("beforeend", digitSVG(k % 10, "#1c2318", "rgba(0,0,0,0)"));
+  slots.push({ strip, from: slotFrom[i], to: slotTo[i], i: slots.length });
+}
+// reticle corners
+const corners = [[0, 0, 1, 1], [1, 0, -1, 1], [0, 1, 1, -1], [1, 1, -1, -1]].map(([cx, cy, sx, sy]) => h("div", { cls: "abs", style: { width: "44px", height: "44px", borderLeft: sx > 0 ? "4px solid #a78bfa" : "none", borderRight: sx < 0 ? "4px solid #a78bfa" : "none", borderTop: sy > 0 ? "4px solid #a78bfa" : "none", borderBottom: sy < 0 ? "4px solid #a78bfa" : "none", borderRadius: `${cx === 0 && cy === 0 ? 10 : 0}px ${cx === 1 && cy === 0 ? 10 : 0}px ${cx === 1 && cy === 1 ? 10 : 0}px ${cx === 0 && cy === 1 ? 10 : 0}px`, filter: "drop-shadow(0 0 6px rgba(167,139,250,.8))" } }, ret));
+const s6file = h("div", { cls: "abs mono nw", style: { left: "960px", top: "792px", fontSize: "21px", color: "#a1a1aa", display: "flex", gap: "12px", alignItems: "center", height: "26px", overflow: "hidden" } }, S6);
+s6file.innerHTML = `<span style="width:22px;height:22px;display:inline-block;color:#71717a">${ICON.camera}</span><span style="display:inline-block;height:26px;overflow:hidden"><span id="fstrip" style="display:block"><span style="display:block;height:26px;line-height:26px">202610 Home Meter #1 Before.jpg</span><span style="display:block;height:26px;line-height:26px">202610 Home Meter #1 After.jpg&nbsp;</span></span></span>`;
+const fstrip = s6file.querySelector("#fstrip");
+
+// Balance chart: the five top-ups (report page 5) and the app's "runs out" estimate
+const CH = { x: 870, y: 240, w: 960, h: 470, x0: 70, x1: 940, y0: 410, y1: 40 };
+const day = (m, d) => (Date.UTC(2026, m - 1, d) - Date.UTC(2026, 6, 1)) / 864e5; // days since 1 Jul
+const SPAN = day(12, 1);
+const cx_ = (dd) => CH.x + CH.x0 + ((CH.x1 - CH.x0) * dd) / SPAN;
+const cy_ = (kwh) => CH.y + CH.y0 - ((CH.y0 - CH.y1) * kwh) / 350;
+// vertex, time it is reached (jumps land on beats / half beats)
+const SAW = [
+  [day(7, 4), 58.10, b(24)], [day(7, 4), 308.10, b(24) + 0.06], [day(8, 6), 64.20, b(25)], [day(8, 6), 314.20, b(25) + 0.06],
+  [day(8, 26), 163.50, b(25.5)], [day(8, 26), 212.44, b(25.5) + 0.06], [day(9, 12), 78.64, b(26)], [day(9, 12), 328.64, b(26) + 0.06],
+  [day(10, 14), 72.52, b(26.5)], [day(10, 14), 322.52, b(26.5) + 0.06],
+].map(([d, k, tt]) => ({ x: cx_(d), y: cy_(k), t: tt }));
+const PROJ = [{ x: cx_(day(10, 14)), y: cy_(322.52), t: b(26.5) + 0.06 }, { x: cx_(day(11, 25)), y: cy_(0), t: b(27.15) }];
+const TOPUPS = [[1, "+250", b(24)], [3, "+250", b(25)], [5, "~+48.94", b(25.5)], [7, "+250", b(26)], [9, "+250", b(26.5)]];
+const s6chart = h("div", { cls: "abs", style: { left: "0", top: "0", width: "1920px", height: "1080px" } }, S6);
+const svg6 = h("svg:svg", { width: 1920, height: 1080, viewBox: "0 0 1920 1080", style: "position:absolute;left:0;top:0" }, s6chart);
+svg6.innerHTML = `<defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4ade80" stop-opacity=".28"/><stop offset="1" stop-color="#4ade80" stop-opacity="0"/></linearGradient>
+<filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+const gridLines = [0, 100, 200, 300].map((v) => {
+  const l = h("svg:line", { x1: CH.x + CH.x0, x2: CH.x + CH.x1, y1: cy_(v), y2: cy_(v), stroke: "#26262b", "stroke-width": 1 }, svg6);
+  const tx = h("svg:text", { x: CH.x + CH.x0 - 16, y: cy_(v) + 4, "text-anchor": "end", fill: "#52525b", style: "font:500 13px RMono,monospace" }, svg6); tx.textContent = String(v);
+  return { l, tx };
+});
+const monthTicks = [[7, "JUL"], [8, "AUG"], [9, "SEP"], [10, "OCT"], [11, "NOV"]].map(([m, s]) => { const tx = h("svg:text", { x: cx_(day(m, 1)) + 4, y: CH.y + CH.y0 + 30, fill: "#52525b", style: "font:500 13px RMono,monospace;letter-spacing:.12em" }, svg6); tx.textContent = s; return tx; });
+const area = h("svg:path", { fill: "url(#ga)" }, svg6);
+const proj = h("svg:polyline", { fill: "none", stroke: "#71717a", "stroke-width": 3, "stroke-dasharray": "2 10", "stroke-linecap": "round" }, svg6);
+const sawLine = h("svg:polyline", { fill: "none", stroke: "#4ade80", "stroke-width": 4, "stroke-linejoin": "round", "stroke-linecap": "round", filter: "url(#glow)" }, svg6);
+const head = h("svg:circle", { r: 7, fill: "#ecfdf5", filter: "url(#glow)" }, svg6);
+const headHalo = h("svg:circle", { r: 20, fill: "#4ade80", opacity: 0.18 }, svg6);
+const tlabels = TOPUPS.map(([vi, s]) => { const g = h("svg:text", { "text-anchor": "middle", fill: s.startsWith("~") ? "#86efac" : "#4ade80", style: "font:700 17px RMono,monospace" }, svg6); g.textContent = s; return g; });
+const runsOut = h("svg:text", { x: PROJ[1].x, y: PROJ[1].y - 18, "text-anchor": "middle", fill: "#a1a1aa", style: "font:500 14px Inter" }, svg6);
+runsOut.textContent = "runs out ~25 Nov";
+const s6title = h("div", { cls: "abs nw", style: { left: CH.x + CH.x0 + "px", top: CH.y - 34 + "px", font: "600 28px/1 Inter", letterSpacing: "-0.02em", color: "#fafafa" }, html: 'Home Meter <span style="color:#71717a;font-weight:500">· balance, kWh</span>' }, S6);
+const STATS = [["785", "kWh", "used between top-ups", 0], ["7.7", "kWh", "a day, on average", 1], ["169.40", "USD", "spent on 5 top-ups", 2]];
+const stats = STATS.map(([v, u, l, i]) => {
+  const e = h("div", { cls: "abs nw", style: { left: CH.x + CH.x0 + i * 300 + "px", top: "790px" } }, S6);
+  e.innerHTML = `<div style="font:700 50px/1 Inter;letter-spacing:-0.03em;font-variant-numeric:tabular-nums">${u === "USD" ? '<span style="font-size:22px;color:#71717a;font-weight:500;letter-spacing:0">USD </span>' : ""}<span class="v">${v}</span>${u !== "USD" ? ` <span style="font-size:22px;color:#71717a;font-weight:500;letter-spacing:0">${u}</span>` : ""}</div><div style="font:500 15px/1 Inter;color:#71717a;margin-top:12px">${l}</div>`;
+  return { e, v: e.querySelector(".v"), target: parseFloat(v), dec: (v.split(".")[1] || "").length };
+});
+const s6ai = h("div", { cls: "abs mono nw", style: { left: CH.x + CH.x0 + "px", top: "900px", fontSize: "16px", color: "#a78bfa", display: "flex", gap: "10px", alignItems: "center" }, html: `<span style="width:16px;height:16px;display:inline-block">${ICON.sparkle}</span>18 meter photos read by Claude · USD 0.006` }, S6);
+
+function polyUpTo(pts, t) {
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const q = pts[i];
+    if (t >= q.t) { out.push([q.x, q.y]); continue; }
+    if (i > 0) { const a = pts[i - 1], k = (t - a.t) / (q.t - a.t); out.push([lerp(a.x, q.x, k), lerp(a.y, q.y, k)]); }
+    break;
+  }
+  return out;
+}
+const ptsStr = (a) => a.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+
+function s6(t) {
+  // device: flash-cut in close, then it slides left to make room for the chart
+  const ki = E.outExpo(p(t, b(21), 0.6));
+  const km = E.inOutExpo(p(t, b(23.6), b(24.3) - b(23.6)));
+  const drift = t - b(21);
+  const sc = lerp(1.32, 1, ki) * lerp(1, 0.66, km);
+  const out = E.inCubic(p(t, b(27.05), 0.3));
+  st(s6dev, { transform: `perspective(1400px) translate3d(${px(lerp(0, -470, km))},${px(lerp(30, -10, km) + 30 * (1 - ki))},0) rotateX(${lerp(14, 5, ki).toFixed(3)}deg) rotateY(${(lerp(-18, -7, ki) + 2.5 * drift + 8 * km).toFixed(3)}deg) scale(${sc.toFixed(4)})`, opacity: (1 - out).toFixed(3), filter: out > 0 ? `blur(${(out * 14).toFixed(2)}px)` : "none" });
+  // digits: spin in to 072.52, then roll to 322.52 on the shutter
+  slots.forEach((s) => {
+    const k1 = E.outExpo(p(t, b(21) + 0.02 + s.i * 0.05, 0.55));
+    const k2 = E.outExpo(p(t, b(23) + 0.04 + s.i * 0.05, 0.6));
+    const p1 = lerp(0, 20 + s.from, k1);
+    const extra = s.to === s.from ? 10 : (s.to - s.from + 10) % 10 + 10;
+    const pos = p1 + extra * k2;
+    st(s.strip, { transform: `translateY(${px(-((pos % 30) * 118))})` });
+  });
+  // AI scan + reticle + chip
+  const ks = p(t, b(22), 0.34);
+  st(scan, { transform: `translateY(${px(lerp(-50, 220, E.inOutCubic(ks)))})`, opacity: (ks > 0 && ks < 1 ? 1 : 0).toFixed(3) });
+  const kr = spring(t - (b(22) + 0.3), 2.6, 0.6);
+  const krOp = clamp((t - (b(22) + 0.28)) * 10);
+  corners.forEach((c, i) => {
+    const cx = i % 2, cy = i >> 1;
+    const spread = 140 * (1 - kr);
+    const x = (cx ? 528 - 44 + 14 : -14) + (cx ? spread : -spread), y = (cy ? 206 - 44 + 14 : -14) + (cy ? spread : -spread);
+    st(c, { transform: `translate(${px(x)},${px(y)}) rotate(${(45 * (1 - kr)).toFixed(2)}deg)`, opacity: krOp.toFixed(3) });
+  });
+  const kch = spring(t - (b(22.5)), 2.8, 0.55);
+  st(chip, { transform: `translateY(${px(20 * (1 - kch))}) scale(${Math.max(0, kch).toFixed(4)})`, opacity: clamp(kch * 3).toFixed(3) });
+  const kv = E.outExpo(p(t, b(23) + 0.04, 0.6));
+  chipV.textContent = (72.52 + 250 * kv).toFixed(2);
+  st(lflash, { opacity: (t > b(23) ? Math.exp(-(t - b(23)) / 0.07) * 0.95 : 0).toFixed(3) });
+  st(lcd, { filter: ks > 0 && ks < 1 ? `hue-rotate(${(40 * Math.sin(Math.PI * ks)).toFixed(1)}deg)` : "none" });
+  const kp = spring(t - (b(23) + 0.06), 2.4, 0.55);
+  st(plus, { transform: `translate(${px(30 * kp)},${px(-118 * kp)}) scale(${Math.max(0, kp).toFixed(4)})`, opacity: (clamp(kp * 3) * (1 - p(t, b(24), 0.25))).toFixed(3) });
+  // file label rolls Before → After
+  const kfl = E.inOutExpo(p(t, b(23), 0.3));
+  st(fstrip, { transform: `translateY(${px(-26 * kfl)})` });
+  const kfm = E.inOutExpo(p(t, b(23.6), b(24.3) - b(23.6)));
+  st(s6file, { transform: `translate(${px(-50 * 0 + lerp(0, -470, kfm))},${px(lerp(0, -128, kfm))}) translateX(-50%) scale(${lerp(1, 0.8, kfm).toFixed(4)})`, opacity: (E.outExpo(p(t, b(21.3), 0.4)) * (1 - out)).toFixed(3) });
+
+  // chart
+  const kg = (i) => E.outExpo(p(t, b(23.85) + i * 0.05, 0.6));
+  gridLines.forEach((g, i) => { at(g.l, { x2: (CH.x + CH.x0 + (CH.x1 - CH.x0) * kg(i)).toFixed(2), opacity: (1 - out).toFixed(3) }); at(g.tx, { opacity: (kg(i) * (1 - out)).toFixed(3) }); });
+  monthTicks.forEach((m, i) => at(m, { opacity: (kg(i + 1) * (1 - out)).toFixed(3) }));
+  const kt = E.outExpo(p(t, b(23.9), 0.55));
+  st(s6title, { opacity: (kt * (1 - out)).toFixed(3), transform: `translateY(${px(18 * (1 - kt))})` });
+  const pts = polyUpTo(SAW, t);
+  const lineOn = t < b(27.15);
+  at(sawLine, { points: lineOn && pts.length ? ptsStr(pts) : "", opacity: lineOn ? "1" : "0" });
+  at(area, { d: pts.length > 1 ? `M${pts[0][0]},${cy_(0)} L${pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" L")} L${pts[pts.length - 1][0].toFixed(2)},${cy_(0)} Z` : "", opacity: (1 - out).toFixed(3) });
+  const pp = polyUpTo(PROJ, t);
+  at(proj, { points: pp.length > 1 ? ptsStr(pp) : "", opacity: (1 - out).toFixed(3) });
+  const hd = pp.length > 1 && t > PROJ[0].t ? pp[pp.length - 1] : pts[pts.length - 1];
+  if (hd) { at(head, { cx: hd[0].toFixed(2), cy: hd[1].toFixed(2), opacity: (1 - out).toFixed(3) }); at(headHalo, { cx: hd[0].toFixed(2), cy: hd[1].toFixed(2), r: (16 + 6 * Math.sin(t * 20)).toFixed(2), opacity: (0.2 * (1 - out)).toFixed(3) }); }
+  else { at(head, { opacity: "0" }); at(headHalo, { opacity: "0" }); }
+  TOPUPS.forEach(([vi, s, tt], i) => {
+    const k = spring(t - tt, 3, 0.5);
+    const v = SAW[vi];
+    at(tlabels[i], { x: v.x.toFixed(2), y: (v.y - 18 - 14 * k).toFixed(2), opacity: (clamp(k * 3) * (1 - out)).toFixed(3), transform: `translate(${v.x.toFixed(2)} ${v.y.toFixed(2)}) scale(${Math.max(0.001, k).toFixed(4)}) translate(${(-v.x).toFixed(2)} ${(-v.y).toFixed(2)})` });
+  });
+  const kro = E.outExpo(p(t, b(27.1) - 0.1, 0.4));
+  at(runsOut, { opacity: (kro * (1 - out)).toFixed(3) });
+  stats.forEach((s, i) => {
+    const k = E.outExpo(p(t, b(26) + i * 0.08, 0.42));
+    s.v.textContent = (s.target * k).toFixed(s.dec);
+    st(s.e, { opacity: (clamp(k * 2) * (1 - out)).toFixed(3), transform: `translateY(${px(24 * (1 - k))})` });
+  });
+  const ka = E.outExpo(p(t, b(26.7), 0.5));
+  st(s6ai, { opacity: (ka * (1 - out)).toFixed(3), transform: `translateX(${px(-20 * (1 - ka))})` });
+}
+
+// ═════════════════════════ S7 · RESOLVE (b27–b31): the line becomes the receipt, the receipt becomes the icon ═════════════════════════
+const ICON_C = { x: 960, y: 470, size: 360 };
+const svg7 = h("svg:svg", { width: 1920, height: 1080, viewBox: "0 0 1920 1080", style: "position:absolute;left:0;top:0" }, S7);
+const glow7 = h("div", { cls: "abs", style: { width: "1200px", height: "1200px", borderRadius: "50%", background: "radial-gradient(circle, rgba(22,163,74,.28) 0%, rgba(22,163,74,0) 60%)", opacity: 0 } }, S7);
+S7.insertBefore(glow7, svg7);
+const morph = h("svg:polyline", { fill: "none", "stroke-width": 4, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg7);
+const iconBox = h("div", { cls: "abs", style: { width: ICON_C.size + "px", height: ICON_C.size + "px", left: ICON_C.x - ICON_C.size / 2 + "px", top: ICON_C.y - ICON_C.size / 2 + "px" } }, S7);
+const ZZ = []; { const x = 300, y = 230, w = 424, hh = 520, n = 8, tw = w / n; ZZ.push([x, y + hh]); for (let i = 1; i <= n; i++) { ZZ.push([x + (i - 0.5) * tw, y + hh - 28]); ZZ.push([x + i * tw, y + hh]); } }
+const receiptPath = (() => { const x = 300, y = 230, w = 424, hh = 520, n = 8, tw = w / n; let d = `M${x} ${y + 40} Q${x} ${y} ${x + 40} ${y} L${x + w - 40} ${y} Q${x + w} ${y} ${x + w} ${y + 40} L${x + w} ${y + hh}`; for (let i = n; i > 0; i--) d += ` L${x + (i - 0.5) * tw} ${y + hh - 28} L${x + (i - 1) * tw} ${y + hh}`; return d + " Z"; })();
+const LINES = [[0.62, 0.22], [0.45, 0.32], [0.55, 0.22], [0.38, 0.3]];
+iconBox.innerHTML = `<svg width="${ICON_C.size}" height="${ICON_C.size}" viewBox="100 100 824 824">
+  <defs><linearGradient id="ig" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#27272a"/><stop offset="1" stop-color="#09090b"/></linearGradient>
+  <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".22"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+  <clipPath id="rc"><rect id="rcr" x="250" y="760" width="524" height="0"/></clipPath><clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath></defs>
+  <g id="tileG" style="transform-origin:512px 512px"><rect x="100" y="100" width="824" height="824" rx="185" fill="url(#ig)"/><rect x="100.5" y="100.5" width="823" height="823" rx="185" fill="none" stroke="#3f3f46" stroke-width="3"/></g>
+  <path d="${receiptPath}" fill="#fafafa" clip-path="url(#rc)"/>
+  ${LINES.map(([a, c], i) => `<g class="ln" style="transform-origin:356px ${322 + i * 78 + 13}px"><rect x="356" y="${322 + i * 78}" width="${424 * a}" height="26" rx="13" fill="#d4d4d8"/><rect x="${724 - 56 - 424 * c * 0.6}" y="${322 + i * 78}" width="${424 * c * 0.6}" height="26" rx="13" fill="#a1a1aa"/></g>`).join("")}
+  <g id="badge" style="transform-origin:708px 716px"><circle cx="708" cy="716" r="150" fill="#09090b"/><circle cx="708" cy="716" r="128" fill="#16a34a"/>
+  <path id="chk" d="M650 718 L690 758 L770 676" fill="none" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></g>
+  <g clip-path="url(#tile)"><rect id="sheenR" x="-300" y="0" width="260" height="1200" fill="url(#sheen)" transform="rotate(20 512 512)"/></g>
+</svg>`;
+const tileG = iconBox.querySelector("#tileG"), rcr = iconBox.querySelector("#rcr"), lns = [...iconBox.querySelectorAll(".ln")], badge = iconBox.querySelector("#badge"), chk = iconBox.querySelector("#chk"), sheenR = iconBox.querySelector("#sheenR");
+const ring7 = h("div", { cls: "abs", style: { width: "200px", height: "200px", borderRadius: "50%", border: "4px solid #4ade80", opacity: 0 } }, S7);
+const r7 = rng(5);
+const sparks = Array.from({ length: 22 }, (_, i) => ({ e: h("div", { cls: "abs", style: { width: "16px", height: "4px", borderRadius: "2px", background: i % 3 ? "#4ade80" : "#fafafa" } }, S7), a: (i / 22) * Math.PI * 2 + r7() * 0.2, d: 140 + r7() * 220, s: 0.6 + r7() * 0.8 }));
+const word = h("div", { cls: "abs nw", style: { font: "700 116px/1 Inter", letterSpacing: "-0.04em", color: "#fafafa" } }, S7);
+const WORD = "Personal File Map";
+const letters = WORD.split("").map((ch) => { const m = h("span", { cls: "mask", style: { paddingBottom: ".26em", marginBottom: "-.26em" } }, word); return h("span", { text: ch === " " ? " " : ch }, m); });
+const tag = h("div", { cls: "abs nw", style: { font: "500 32px/1 Inter", color: "#a1a1aa", display: "flex", gap: "26px", alignItems: "center", letterSpacing: "-0.01em" } }, S7);
+const TAGS = [["Paid", C.green], ["Due", C.amber], ["Missing", C.rose]];
+const tagEls = TAGS.map(([s, c]) => h("span", { style: { display: "inline-flex", alignItems: "center", gap: "12px" }, html: `<i style="width:14px;height:14px;border-radius:50%;background:${c};display:inline-block"></i>${s}` }, tag));
+const tagTail = h("span", { style: { color: "#71717a" }, text: "— one PDF, one double-click." }, tag);
+const foot = h("div", { cls: "abs mono nw", style: { left: "960px", top: "930px", fontSize: "16px", letterSpacing: ".2em", color: "#52525b", textTransform: "uppercase" }, text: "macOS · Windows · free for personal use" }, S7);
+let WORDW = 0;
+
+function resample(pts, n) {
+  const L = [0]; for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const out = []; let j = 1;
+  for (let k = 0; k < n; k++) { const s = (L[L.length - 1] * k) / (n - 1); while (j < L.length - 1 && L[j] < s) j++; const a = pts[j - 1], c = pts[j], f = (s - L[j - 1]) / (L[j] - L[j - 1] || 1); out.push([lerp(a[0], c[0], f), lerp(a[1], c[1], f)]); }
+  return out;
+}
+let SAWR = null, ZZR = null;
+
+function s7(t) {
+  const isz = ICON_C.size, u = isz / 824;
+  // lockup: the icon slides left and shrinks as the name arrives
+  const kl = spring(t - b(28.55), 1.9, 0.82);
+  const fin = 228, gap = 60, total = fin + gap + WORDW, sx = 960 - total / 2;
+  const icx = lerp(ICON_C.x, sx + fin / 2, kl), icy = lerp(ICON_C.y, 476, kl), isc = lerp(1, fin / isz, kl);
+  const imp = t > b(28) ? 1 + 0.07 * Math.sin((t - b(28)) * 2 * Math.PI * 3.2) * Math.exp(-(t - b(28)) * 7) : 1;
+  st(iconBox, { transform: `translate(${px(icx - ICON_C.x + shake(t, b(28), 6))},${px(icy - ICON_C.y + shake(t, b(28), 4, 23))}) scale(${(isc * imp).toFixed(4)})` });
+  const toScreen = ([ux, uy]) => [ICON_C.x + (ux - 512) * u, ICON_C.y + (uy - 512) * u];
+  // the chart line morphs into the receipt's zig-zag edge (b27.15 → b27.75)
+  if (!SAWR) { SAWR = resample(SAW.map((q) => [q.x, q.y]), 90); ZZR = resample(ZZ.map(toScreen), 90); }
+  const km = E.inOutExpo(p(t, b(27.15), b(27.8) - b(27.15)));
+  const morphOn = t >= b(27.15) && t < b(27.8) + 0.12;
+  at(morph, { points: morphOn ? ptsStr(SAWR.map((q, i) => [lerp(q[0], ZZR[i][0], km), lerp(q[1], ZZR[i][1], km)])) : "", stroke: mixc("#4ade80", "#fafafa", km), "stroke-width": (4 + 2 * km).toFixed(2), opacity: morphOn ? "1" : "0" });
+  // the receipt grows up out of its edge, the tile closes in behind it
+  const kre = E.outExpo(p(t, b(27.75), 0.32));
+  at(rcr, { y: (760 - 540 * kre).toFixed(2), height: (540 * kre).toFixed(2) });
+  const kt = spring(t - b(27.7), 2.4, 0.62);
+  st(tileG, { transform: `scale(${Math.max(0, lerp(0.55, 1, kt)).toFixed(4)})`, opacity: clamp(kt * 2.5).toFixed(3) });
+  lns.forEach((g, i) => { const k = E.outExpo(p(t, b(27.85) + i * 0.035, 0.35)); st(g, { transform: `scaleX(${k.toFixed(4)})`, opacity: k > 0 ? "1" : "0" }); });
+  // b28: the check slams
+  const kb = spring(t - b(28), 2.6, 0.42);
+  st(badge, { transform: `scale(${Math.max(0, kb).toFixed(4)})`, opacity: t >= b(28) ? "1" : "0" });
+  at(chk, { "stroke-dashoffset": (1 - E.outCubic(p(t, b(28) + 0.05, 0.22))).toFixed(4) });
+  const bx = icx + (708 - 512) * u * isc, by = icy + (716 - 512) * u * isc;
+  const kr = p(t, b(28), 0.6);
+  st(ring7, { transform: `translate(${px(bx - 100)},${px(by - 100)}) scale(${lerp(0.4, 3.4, E.outCubic(kr)).toFixed(4)})`, opacity: (t >= b(28) ? (1 - kr) * 0.9 : 0).toFixed(3), borderWidth: px(lerp(6, 1, kr)) });
+  sparks.forEach((s) => {
+    const k = E.outExpo(p(t, b(28), 0.7));
+    const d = 60 + s.d * k;
+    st(s.e, { transform: `translate(${px(bx + Math.cos(s.a) * d - 8)},${px(by + Math.sin(s.a) * d - 2)}) rotate(${((s.a * 180) / Math.PI).toFixed(1)}deg) scaleX(${(s.s * (1 - k * 0.7)).toFixed(3)})`, opacity: (t >= b(28) ? clamp(1 - p(t, b(28) + 0.15, 0.5)) : 0).toFixed(3) });
+  });
+  st(glow7, { transform: `translate(${px(icx - 600)},${px(icy - 600)}) scale(${lerp(0.6, 1, E.outExpo(p(t, b(28), 0.8))).toFixed(4)})`, opacity: (t >= b(28) ? lerp(1, 0.45, p(t, b(28), 1.2)) * clamp(1 - kl * 0.5) : 0).toFixed(3) });
+  const ksh = p(t, b(29.6), 0.7);
+  at(sheenR, { x: lerp(-300, 1200, E.inOutCubic(ksh)).toFixed(1) });
+  // the name, letter by letter; the tagline; the footer
+  const wx = sx + fin + gap;
+  st(word, { transform: `translate(${px(wx)},${px(476 - 76)})` });
+  letters.forEach((l, i) => { const k = E.outExpo(p(t, b(28.6) + i * 0.022, 0.6)); st(l, { opacity: k > 0 ? "1" : "0", transform: `translateY(${(135 * (1 - k)).toFixed(2)}%)`, filter: k < 1 ? `blur(${(6 * (1 - k)).toFixed(2)}px)` : "none" }); });
+  st(tag, { transform: `translate(${px(wx + 4)},${px(476 + 66)})` });
+  [...tagEls, tagTail].forEach((e, i) => { const k = E.outExpo(p(t, b(29.4) + i * 0.09, 0.55)); st(e, { opacity: k.toFixed(3), transform: `translateY(${px(16 * (1 - k))})` }); });
+  const kf = E.outExpo(p(t, b(30.1), 0.6));
+  st(foot, { transform: `translateX(-50%) translateY(${px(10 * (1 - kf))})`, opacity: kf.toFixed(3) });
+}
+
+// ═════════════════════════ HUD: the reel's chrome ═════════════════════════
+HUD.innerHTML = `
+<div id="hTL" class="abs nw" style="left:56px;top:46px;font:600 14px/1 Inter;letter-spacing:.18em">PERSONAL FILE MAP <span id="hTL2" style="font-weight:500;opacity:.45">/ MOTION REEL ’26</span></div>
+<div id="hTR" class="abs mono nw" style="left:auto;right:56px;top:46px;font-size:14px;letter-spacing:.12em;font-variant-numeric:tabular-nums"></div>
+<div id="hBL" class="abs nw" style="left:56px;top:1012px;display:flex;gap:16px;align-items:center"><span id="hSc" class="mono" style="font-size:14px;letter-spacing:.16em;min-width:180px"></span><span style="position:relative;display:inline-block;width:200px;height:2px;background:currentColor;opacity:.2"></span><span id="hPr" style="position:absolute;left:212px;top:6px;width:200px;height:2px;background:currentColor;transform-origin:0 0"></span></div>
+<div id="hBR" class="abs mono nw" style="left:auto;right:56px;top:1006px;display:flex;gap:7px;align-items:center;font-size:13px;letter-spacing:.14em"><span style="opacity:.55;margin-right:10px">124 BPM</span><i></i><i></i><i></i><i></i></div>`;
+const hud = { root: HUD, tl: HUD.querySelector("#hTL"), tr: HUD.querySelector("#hTR"), sc: HUD.querySelector("#hSc"), pr: HUD.querySelector("#hPr"), beats: [...HUD.querySelectorAll("#hBR i")], all: [...HUD.children] };
+hud.beats.forEach((i) => Object.assign(i.style, { display: "inline-block", width: "10px", height: "10px", borderRadius: "2px", background: "currentColor" }));
+const SCENES = [[0, "01 — SORT"], [b(4), "02 — PARSE"], [b(8), "03 — MAP"], [b(13), "04 — FLAG"], [b(16), "05 — REPORT"], [b(21), "06 — READ"], [b(27.2), "07 — RESOLVE"]];
+function hudColor(t) {
+  // dark text over the light matrix (b8–b13), white elsewhere
+  const k = clamp(p(t, b(7.75), 0.25) - p(t, b(13), 0.15));
+  return mixc("#fafafa", "#09090b", k);
+}
+function hudUpdate(t) {
+  const c = hudColor(t);
+  const fade = clamp(t * 4) * (1 - p(t, b(27.9), 0.3));
+  st(HUD, { color: c, opacity: fade.toFixed(3) });
+  const fr = Math.floor(t * 60 + 1e-6);
+  hud.tr.textContent = `TC 00:00:${String(Math.floor(fr / 60)).padStart(2, "0")}:${String(fr % 60).padStart(2, "0")}`;
+  let sc = SCENES[0][1]; for (const [tt, s] of SCENES) if (t >= tt) sc = s;
+  hud.sc.textContent = sc;
+  st(hud.pr, { transform: `scaleX(${(t / T).toFixed(4)})` });
+  const beat = Math.floor(t / B + 1e-6);
+  hud.beats.forEach((i, k) => st(i, { opacity: k === beat % 4 ? "1" : "0.2", transform: k === beat % 4 ? `scale(${(1 + 0.5 * Math.exp(-(t - beat * B) * 12)).toFixed(3)})` : "scale(1)" }));
+}
+
+// ═════════════════════════ film grain ═════════════════════════
+const grainTiles = [];
+{
+  const cv = document.createElement("canvas"); cv.width = cv.height = 256;
+  const g = cv.getContext("2d"); const img = g.createImageData(256, 256); const rr = rng(99);
+  for (let i = 0; i < img.data.length; i += 4) { const v = Math.floor(rr() * 255); img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
+  g.putImageData(img, 0, 0);
+  GRAIN.style.backgroundImage = `url(${cv.toDataURL()})`;
+}
+
+// ═════════════════════════ seek ═════════════════════════
+const cuts = { s1: [-1, b(4)], s2: [b(4), b(8.15)], s3: [b(7.3), b(15.5)], s4: [b(13) - 0.06, b(16)], s5: [b(15.5), b(21)], s6: [b(21), b(27.5)], s7: [b(27.1), 99] };
+const on = (k, t) => t >= cuts[k][0] && t < cuts[k][1];
+function seek(t) {
+  vis(S1, on("s1", t)); vis(S2, on("s2", t)); vis(S3, on("s3", t)); vis(S4, on("s4", t)); vis(S5, on("s5", t)); vis(S6, on("s6", t)); vis(S7, on("s7", t));
+  if (on("s1", t)) s1(t);
+  if (on("s2", t) || on("s3", t)) s2(t); // S3's circle reveal needs the month token's position
+  if (on("s3", t)) s3(t, s2.month);
+  if (on("s4", t)) s4(t);
+  if (on("s5", t)) s5(t);
+  if (on("s6", t)) s6(t);
+  if (on("s7", t)) s7(t);
+  // flashes: the cut into the meter (b21) and a soft one on the logo hit (b28)
+  let fl = 0;
+  if (t > b(21) - 0.05) fl = Math.max(fl, t < b(21) ? (t - (b(21) - 0.05)) / 0.05 : Math.exp(-(t - b(21)) / 0.11));
+  if (t > b(28)) fl = Math.max(fl, 0.35 * Math.exp(-(t - b(28)) / 0.08));
+  st(FLASH, { opacity: fl.toFixed(3) });
+  const light = on("s3", t) ? clamp(p(t, b(7.5), b(8.05) - b(7.5)) - p(t, b(13), 0.4)) : 0;
+  st(VIGN, { opacity: (1 - 0.75 * light).toFixed(3) });
+  // the circle reveal's leading edge
+  const kr = E.inOutExpo(p(t, b(7.32), b(8.05) - b(7.32)));
+  const R = lerp(0, 2300, kr);
+  if (t > b(7.32) && t < b(8.1) && s2.month) st(RING, { display: "block", width: px(2 * R), height: px(2 * R), transform: `translate(${px(s2.month.x - R)},${px(s2.month.y - R)})`, borderWidth: px(lerp(10, 3, kr)) });
+  else st(RING, { display: "none" });
+  const fr = Math.floor(t * 60);
+  st(GRAIN, { backgroundPosition: `${(fr * 73) % 256}px ${(fr * 151) % 256}px` });
+  hudUpdate(t);
+}
+
+window.T = T; window.B = B; window.seek = seek;
+window.ready = (async () => {
+  await document.fonts.ready;
+  await Promise.all([...document.images].map((im) => (im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; }))));
+  vis(S1, true); vis(S2, true); vis(S7, true);
+  for (const n of names) n.w = n.e.offsetWidth;
+  const m = h("span", { cls: "mono nw", style: { fontSize: S2FS + "px", position: "absolute", visibility: "hidden" }, text: "0".repeat(100) }, S2);
+  CW = m.offsetWidth / 100; m.remove();
+  X0 = 960 - (31 * CW) / 2;
+  WORDW = word.offsetWidth;
+  s2(b(4)); // sets s2.month
+  seek(0);
+  return true;
+})();
+if (!location.search.includes("render")) {
+  // preview: play in real time; ?t=12.3 to hold a frame
+  const q = new URLSearchParams(location.search);
+  window.ready.then(() => {
+    if (q.has("t")) return seek(+q.get("t"));
+    const t0 = performance.now();
+    const loop = () => { seek(((performance.now() - t0) / 1000) % T); requestAnimationFrame(loop); };
+    loop();
+  });
+}
+</script>
+</body>
+</html>
