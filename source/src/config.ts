@@ -5,17 +5,15 @@ import * as path from "path";
 import embeddedDefaults from "../../config.default.json";
 
 /**
- * Both live next to the app:
- *  - config.default.json: shared, generic defaults (committed). Falls back to the built-in copy.
- *  - config.local.json:   your own settings and bills (created on first run). Overrides the default.
+ * - config.default.json: next to the app (built-in copy if absent). Generic defaults; its "folder"
+ *   points at the bills folder.
+ * - config.local.json: inside the bills folder, created on first run. That folder's bills.
  */
 export const DEFAULT_CONFIG_NAME = "config.default.json";
 export const LOCAL_CONFIG_NAME = "config.local.json";
 export const CONFIG_FILES = [DEFAULT_CONFIG_NAME, LOCAL_CONFIG_NAME];
-/** Used only if neither config sets "folder". */
+/** "./": the folder the config file is in. Also what a new config.local.json gets. */
 export const DEFAULT_FOLDER = "./";
-/** "folder" written into a freshly created config.local.json: the app's own folder. */
-export const NEW_LOCAL_FOLDER = "./";
 
 /**
  * How often a bill is expected:
@@ -35,8 +33,6 @@ export type ScheduleSpec =
   | { months?: number[]; every?: number; from?: number; until?: number };
 
 export interface BillsConfig {
-  /** Folder with the bill files, relative to the config file (or absolute, or ~/…). Default "./". */
-  folder: string;
   bills: Record<string, ScheduleSpec>;
 }
 
@@ -55,33 +51,47 @@ export interface PartialConfig {
 }
 
 const LOCAL_HELP = [
-  "Your settings. Overrides config.default.json (same keys). Created automatically with every bill found set to \"monthly\"; adjust as needed.",
-  '"folder": where the bill files are ("./" = next to the app; relative, absolute or "~/..." paths work).',
+  "This folder's bills. Created automatically; any bill found that isn't listed yet is added as \"monthly\". Adjust as needed: your entries are never changed. Keys here replace the same keys in config.default.json.",
+  '"folder": where the bill files are, relative to this file. "./" = this folder (relative, absolute or "~/..." paths work).',
   'Bill values: "monthly", "quarterly", "irregular", null, {"months": [1, 7]}, {"every": 2, "from": 3, "until": 12}. A key also covers bills that start with it; the longest match wins.',
 ];
 
-/** Reads config.default.json (or the built-in copy) and config.local.json (null if it doesn't exist yet). */
-export function loadConfigs(appDir: string): { defaults: PartialConfig; local: PartialConfig | null } {
-  const defaults = readConfigFile(appDir, DEFAULT_CONFIG_NAME) ?? validate(embeddedDefaults, DEFAULT_CONFIG_NAME);
-  const local = readConfigFile(appDir, LOCAL_CONFIG_NAME);
-  return { defaults, local };
+/**
+ * config.default.json next to the app, else the built-in copy. With only the app copied somewhere,
+ * the app's own folder is the bills folder (the built-in "./samples" only makes sense in the repo).
+ */
+export function loadDefaults(appDir: string): PartialConfig {
+  return readConfigFile(appDir, DEFAULT_CONFIG_NAME) ?? { ...validate(embeddedDefaults, DEFAULT_CONFIG_NAME), folder: DEFAULT_FOLDER };
 }
 
-/** Local wins: its "folder" replaces the default's, its bill keys replace the same keys. */
+/** config.local.json inside the bills folder; null if it doesn't exist yet. */
+export function loadLocal(billsDir: string): PartialConfig | null {
+  return readConfigFile(billsDir, LOCAL_CONFIG_NAME);
+}
+
+/** Bill keys in config.local.json replace the same keys in config.default.json. */
 export function mergeConfigs(defaults: PartialConfig, local: PartialConfig | null): BillsConfig {
-  return {
-    folder: local?.folder ?? defaults.folder ?? DEFAULT_FOLDER,
-    bills: { ...(defaults.bills ?? {}), ...(local?.bills ?? {}) },
-  };
+  return { bills: { ...(defaults.bills ?? {}), ...(local?.bills ?? {}) } };
 }
 
-/** First run: create config.local.json with every bill found set to "monthly". */
-export function writeLocalConfig(appDir: string, folder: string, billNames: string[]): PartialConfig {
+/**
+ * Adds bills as "monthly" to config.local.json, creating the file (with `folderIfNew`) if needed.
+ * Existing entries, other keys and their order are kept; new bills are appended.
+ */
+export function addBillsToLocalConfig(appDir: string, billNames: string[], folderIfNew: string): PartialConfig {
+  const file = path.join(appDir, LOCAL_CONFIG_NAME);
+  let raw: Record<string, unknown>;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, "utf8").replace(/^﻿/, "")) as Record<string, unknown>;
+  } catch {
+    raw = { _help: LOCAL_HELP, folder: folderIfNew, bills: {} }; // missing (bad JSON was already reported by loadConfigs)
+  }
+  const bills = { ...((raw.bills as Record<string, ScheduleSpec> | undefined) ?? {}) };
   const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
-  const bills = Object.fromEntries([...billNames].sort(collator.compare).map((n) => [n, "monthly" as const]));
-  const config: PartialConfig = { folder, bills };
-  fs.writeFileSync(path.join(appDir, LOCAL_CONFIG_NAME), JSON.stringify({ _help: LOCAL_HELP, ...config }, null, 2) + "\n");
-  return config;
+  for (const name of [...billNames].sort(collator.compare)) bills[name] = "monthly";
+  raw.bills = bills;
+  fs.writeFileSync(file, JSON.stringify(raw, null, 2) + "\n");
+  return validate(raw, LOCAL_CONFIG_NAME);
 }
 
 function readConfigFile(appDir: string, name: string): PartialConfig | null {

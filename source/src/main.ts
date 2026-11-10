@@ -1,7 +1,17 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import { analyze } from "./analyze";
-import { DEFAULT_FOLDER, LOCAL_CONFIG_NAME, loadConfigs, mergeConfigs, NEW_LOCAL_FOLDER, resolveFolder, writeLocalConfig } from "./config";
+import {
+  addBillsToLocalConfig,
+  DEFAULT_CONFIG_NAME,
+  DEFAULT_FOLDER,
+  LOCAL_CONFIG_NAME,
+  loadDefaults,
+  loadLocal,
+  matchKey,
+  mergeConfigs,
+  resolveFolder,
+} from "./config";
 import { appFolder, detectYear, isTranslocated, selfName, TRANSLOCATED_MESSAGE } from "./locate";
 import { renderPdf } from "./pdf";
 import { configDir, isMac, openFile, showAlert } from "./platform";
@@ -13,30 +23,20 @@ async function main(): Promise<void> {
   const today = process.env.BILLS_TODAY ? new Date(`${process.env.BILLS_TODAY}T12:00:00`) : new Date();
   console.log(`${TITLE}\n`);
 
-  // Configs sit next to the app; "folder" says where the bills are (default: right here).
+  // config.default.json (next to the app) → bills folder → config.local.json inside it.
   const appDir = process.env.BILLS_DIR || appFolder(); // BILLS_DIR: testing override for the app's folder
   if (isTranslocated(appDir)) throw new Error(TRANSLOCATED_MESSAGE);
-  const { defaults, local } = loadConfigs(appDir);
-  // First run: config.local.json will be created with "folder": "./", so scan that folder now too
-  // (its bill list then matches the folder it points at).
-  const created = local === null;
-  let config = mergeConfigs(defaults, created ? { folder: NEW_LOCAL_FOLDER } : local);
-  const folderSetting = config.folder;
-  const dir = resolveFolder(appDir, folderSetting);
-  console.log(`Folder: ${dir}`);
+  const defaults = loadDefaults(appDir);
+  const localDir = resolveFolder(appDir, defaults.folder ?? DEFAULT_FOLDER);
+  await checkFolder(localDir, defaults.folder, DEFAULT_CONFIG_NAME);
 
-  try {
-    await fs.readdir(dir);
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    const where = folderSetting === DEFAULT_FOLDER ? "" : `\n\n("folder": "${folderSetting}" in the config)`;
-    if (code === "ENOENT" || code === "ENOTDIR") throw new Error(`The bills folder doesn't exist:\n${dir}${where}`);
-    const hint =
-      isMac && (code === "EPERM" || code === "EACCES")
-        ? "\n\nmacOS blocked access. Open System Settings → Privacy & Security → Files & Folders and allow “Bills Overview”, then run again."
-        : "";
-    throw new Error(`Can't open the bills folder:\n${dir}${where}${hint}`);
-  }
+  // config.local.json may point somewhere else with its own "folder" (relative to itself); new ones use "./".
+  const local = loadLocal(localDir);
+  const created = local === null;
+  let config = mergeConfigs(defaults, local);
+  const dir = resolveFolder(localDir, local?.folder ?? DEFAULT_FOLDER);
+  if (dir !== localDir) await checkFolder(dir, local?.folder, LOCAL_CONFIG_NAME);
+  console.log(`Folder: ${dir}`);
 
   const year = detectYear(dir, today);
   const self = selfName();
@@ -44,10 +44,15 @@ async function main(): Promise<void> {
   housekeeping.forEach((a) => console.log(`  ${a.file}: ${a.reason}`));
 
   const scan = await scanDirectory(dir, year, self);
-  if (created) {
-    const written = writeLocalConfig(appDir, folderSetting, [...new Set(scan.files.map((f) => f.name))]);
+
+  // Every bill found that no config key covers yet goes into config.local.json as "monthly"
+  // (creating the file on first run). Existing entries are left alone.
+  const keys = Object.keys(config.bills);
+  const newBills = [...new Set(scan.files.map((f) => f.name))].filter((n) => matchKey(n, keys) === null);
+  if (created || newBills.length > 0) {
+    const written = addBillsToLocalConfig(localDir, newBills, DEFAULT_FOLDER);
     config = mergeConfigs(defaults, written);
-    console.log(`  Created ${LOCAL_CONFIG_NAME} (every bill set to monthly)`);
+    console.log(`  ${created ? "Created" : "Updated"} ${LOCAL_CONFIG_NAME}: ${newBills.length} bill(s) added as monthly`);
   }
   const report = analyze(scan, {
     today,
@@ -55,6 +60,7 @@ async function main(): Promise<void> {
     housekeeping,
     config,
     configCreated: created,
+    configAdded: created ? 0 : newBills.length,
   });
   const pdf = await renderPdf(report);
 
@@ -76,6 +82,22 @@ async function main(): Promise<void> {
   );
   await writeLog(`OK ${new Date().toISOString()}\n${out}\n`);
   if (!process.env.BILLS_NO_OPEN) openFile(out);
+}
+
+/** Throws a readable error if a configured folder is missing or blocked. */
+async function checkFolder(dir: string, setting: string | undefined, file: string) {
+  try {
+    await fs.readdir(dir);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    const where = setting && setting !== DEFAULT_FOLDER ? `\n\n("folder": "${setting}" in ${file})` : "";
+    if (code === "ENOENT" || code === "ENOTDIR") throw new Error(`The bills folder doesn't exist:\n${dir}${where}`);
+    const hint =
+      isMac && (code === "EPERM" || code === "EACCES")
+        ? "\n\nmacOS blocked access. Open System Settings → Privacy & Security → Files & Folders and allow “Bills Overview”, then run again."
+        : "";
+    throw new Error(`Can't open the bills folder:\n${dir}${where}${hint}`);
+  }
 }
 
 async function writeLog(text: string) {

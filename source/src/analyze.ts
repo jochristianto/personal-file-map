@@ -9,6 +9,8 @@ export interface AnalyzeOptions {
   housekeeping: IgnoredFile[];
   config: BillsConfig;
   configCreated: boolean;
+  /** Bills appended to an existing config.local.json this run. */
+  configAdded: number;
 }
 
 /**
@@ -96,7 +98,10 @@ export function analyze(scan: ScanResult, opts: AnalyzeOptions): Report {
   const unscheduled = rows.filter((r) => r.pattern === "unscheduled");
   if (opts.configCreated) {
     configNotes.unshift({ file: LOCAL_CONFIG_NAME, reason: "created: every bill set to monthly, adjust as needed" });
-  } else if (unscheduled.length > 0) {
+  } else if (opts.configAdded > 0) {
+    configNotes.unshift({ file: LOCAL_CONFIG_NAME, reason: `${opts.configAdded} new bill${opts.configAdded > 1 ? "s" : ""} added as monthly` });
+  }
+  if (!opts.configCreated && unscheduled.length > 0) {
     configNotes.unshift({ file: LOCAL_CONFIG_NAME, reason: `${unscheduled.length} bill${unscheduled.length > 1 ? "s have" : " has"} no schedule` });
   }
 

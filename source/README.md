@@ -2,31 +2,32 @@
 
 Double-click **`bills-overview.app`** (macOS) or **`bills-overview.exe`** (Windows). It:
 
-1. Reads the bill files (`YYYYMM Name.ext`) in the configured `"folder"`. On first run that's `"./"`, the folder the app is in. The year comes from that folder's name (`2026`), or else from the file names.
-2. Tidies files like the old `file-mapper` did: uppercase extensions → lowercase, `.heic` → `.jpg`.
-3. Writes **`bills-overview.output.pdf`** into the bills folder (overwritten each run, never counted as a bill) and opens it. The app, the exe and the config files are ignored.
+1. Finds the bills folder: `"folder"` in `config.default.json` next to the app (`./samples` in this repo). Without that file, the folder the app is in.
+2. Reads the bill files (`YYYYMM Name.ext`) there. The year comes from the folder's name (`2026`), or else from the file names.
+3. Tidies files like the old `file-mapper` did: uppercase extensions → lowercase, `.heic` → `.jpg`.
+4. Writes **`config.local.json`** (first run) and **`bills-overview.output.pdf`** into the bills folder, and opens the PDF. The app, the exe and the config files are never counted as bills.
 
 No Node, npm or other repos are needed to run it; the Node runtime is inside the executable.
 
 Two ways to set it up:
 
-- **App inside the bills folder** (e.g. `Monthly Bills/2026`), `"folder": "./"`. For a new year, copy the app and `config.local.json` into the new folder.
-- **App anywhere**, `"folder"` pointing at the bills, e.g. `"./samples"`, `"../Monthly Bills/2026"`, `"~/Library/CloudStorage/GoogleDrive-…/My Drive/Bills/Monthly Bills/2026"` or `"G:/My Drive/Bills/Monthly Bills/2026"`. For a new year, change the path.
+- **Only the app, inside the bills folder** (e.g. `Monthly Bills/2026`). No `config.default.json` needed. For a new year, copy the app into the new folder (`config.local.json` too, to keep the schedules).
+- **App + `config.default.json` anywhere**, `"folder"` pointing at the bills, e.g. `"./samples"`, `"../Monthly Bills/2026"`, `"~/Library/CloudStorage/GoogleDrive-…/My Drive/Bills/Monthly Bills/2026"` or `"G:/My Drive/Bills/Monthly Bills/2026"`. For a new year, change the path.
 
 ## Configuration
 
-Two JSON files, both next to the app:
+| File | Where | What | In git |
+|---|---|---|---|
+| [`config.default.json`](../config.default.json) | next to the app | Generic defaults: `"folder"` (the bills folder, `./samples` here) and shared bills (none). Optional: without it the app's own folder is used. | yes |
+| `config.local.json` | inside the bills folder | That folder's bills. **Created automatically on first run** with `"folder": "./"` and every bill found set to `"monthly"`. Its bill keys replace the same keys in the default. | no |
 
-| File | What | In git |
-|---|---|---|
-| [`config.default.json`](../config.default.json) | Generic defaults (`"folder": "./samples"`, no bills). Also built into the app, so it's optional next to the app. | yes |
-| `config.local.json` | Your folder and bills. **Created automatically on first run** with `"folder": "./"` and every bill found in that folder set to `"monthly"`. Overrides the default. | no |
+On every run, bills found that no key covers yet (for example a new bill appearing) are **appended to `config.local.json` as `"monthly"`**, and the report's Housekeeping card says how many. Your existing entries, including ones set to `null`, are never changed.
 
-`config.local.json` wins: its `"folder"` replaces the default one, and its bill keys replace the same keys in the default. So the default `./samples` only applies if `config.local.json` has no `"folder"`. The app never edits an existing `config.local.json`. Delete it to have it recreated from the current files.
+`"folder"` in `config.local.json` is `"./"` (its own folder). Changing it makes the app read the bills (and write the PDF) somewhere else, relative to `config.local.json`, while the config itself stays put.
 
 ```json
 {
-  "folder": "./samples",
+  "folder": "./",
   "bills": {
     "Rent": "monthly",
     "Insurance Car": "quarterly",
@@ -60,7 +61,7 @@ The last run's result is in `last-run.log` (macOS: `~/Library/Application Suppor
 
 ## Samples
 
-[`../samples`](../samples) holds generic sample bills covering monthly, quarterly, irregular and one-off bills plus a few stray files for Housekeeping. To try them, set `"folder": "./samples"` in `config.local.json` (or remove its `"folder"` to fall back to the default). Regenerate with:
+[`../samples`](../samples) holds generic sample bills covering monthly, quarterly, irregular and one-off bills plus a few stray files for Housekeeping. `config.default.json` already points at them, so double-clicking the app in the repo root reports on the samples (creating `samples/config.local.json` the first time). Regenerate with:
 
 ```bash
 cd source && npm run samples
@@ -76,4 +77,4 @@ cd source && npm install && npm run build
 
 This produces `bills-overview.app` and `bills-overview.exe` in the parent folder. Building has to happen on a Mac (for the `.app`); the Windows `.exe` is cross-built. An Intel Mac build is left in `dist/bills-overview-intel.app`. `config.default.json` is embedded at build time.
 
-Testing: `node build.mjs --bundle-only`, then `BILLS_DIR=/some/folder BILLS_NO_OPEN=1 node dist/bills-overview.cjs`. `BILLS_DIR` stands in for the app's folder (where the configs are read from). Optionally add `BILLS_TODAY=2026-11-10`.
+Testing: `node build.mjs --bundle-only`, then `BILLS_DIR=/some/folder BILLS_NO_OPEN=1 node dist/bills-overview.cjs`. `BILLS_DIR` stands in for the app's folder (where `config.default.json` is read from). Optionally add `BILLS_TODAY=2026-11-10`.
