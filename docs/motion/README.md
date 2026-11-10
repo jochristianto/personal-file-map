@@ -1,6 +1,6 @@
 # The demo video
 
-The loop at the top of the README: one page ([`index.html`](index.html)) that draws the app's own window and report, seeked frame by frame. Nothing here is part of the app or its build; generated files go to `out/` (git-ignored).
+The README's first demo loop (the top of the README now shows the [reel](showreel/)): one page ([`index.html`](index.html)) that draws the app's own window and report, seeked frame by frame. Nothing here is part of the app or its build; generated files go to `out/` (git-ignored).
 
 **Everything shown is the app's.** The labels, layout and colors come from `src/window.html` and `src/pdf.ts`; the numbers come from running the real app on a demo folder with a stand-in for the Claude API, so every figure (files, bills, due, missing, kWh, days, kWh a day, spent, tokens, cost) is one the app computed. The folder is `pnpm samples 2026 11` (with `BILLS_TODAY=2026-11-10`), with the samples' meter files swapped for the README's and FAQ's Home Meter example (`72.52 → 250.00 → 322.52`, the September photos dated by the `12 Sep 2026 18:40` payment). The API key is fake (`sk-ant-demo…`) and only its last 4 characters are ever shown.
 
