@@ -3,7 +3,6 @@ import * as path from "path";
 import { analyze } from "./analyze";
 import {
   addBillsToLocalConfig,
-  DEFAULT_CONFIG_NAME,
   DEFAULT_FOLDER,
   LOCAL_CONFIG_NAME,
   loadDefaults,
@@ -23,19 +22,17 @@ async function main(): Promise<void> {
   const today = process.env.BILLS_TODAY ? new Date(`${process.env.BILLS_TODAY}T12:00:00`) : new Date();
   console.log(`${TITLE}\n`);
 
-  // config.default.json (next to the app) → bills folder → config.local.json inside it.
+  // config.local.json sits next to the app; its "folder" says where the bills are ("./" = right here).
+  // The built-in config.default.json is the template for it and provides base bill schedules.
   const appDir = process.env.BILLS_DIR || appFolder(); // BILLS_DIR: testing override for the app's folder
   if (isTranslocated(appDir)) throw new Error(TRANSLOCATED_MESSAGE);
-  const defaults = loadDefaults(appDir);
-  const localDir = resolveFolder(appDir, defaults.folder ?? DEFAULT_FOLDER);
-  await checkFolder(localDir, defaults.folder, DEFAULT_CONFIG_NAME);
-
-  // config.local.json may point somewhere else with its own "folder" (relative to itself); new ones use "./".
-  const local = loadLocal(localDir);
+  const defaults = loadDefaults();
+  const local = loadLocal(appDir);
   const created = local === null;
   let config = mergeConfigs(defaults, local);
-  const dir = resolveFolder(localDir, local?.folder ?? DEFAULT_FOLDER);
-  if (dir !== localDir) await checkFolder(dir, local?.folder, LOCAL_CONFIG_NAME);
+  const folderSetting = local?.folder ?? defaults.folder ?? DEFAULT_FOLDER;
+  const dir = resolveFolder(appDir, folderSetting);
+  await checkFolder(dir, folderSetting, LOCAL_CONFIG_NAME);
   console.log(`Folder: ${dir}`);
 
   const year = detectYear(dir, today);
@@ -50,7 +47,7 @@ async function main(): Promise<void> {
   const keys = Object.keys(config.bills);
   const newBills = [...new Set(scan.files.map((f) => f.name))].filter((n) => matchKey(n, keys) === null);
   if (created || newBills.length > 0) {
-    const written = addBillsToLocalConfig(localDir, newBills, DEFAULT_FOLDER);
+    const written = addBillsToLocalConfig(appDir, newBills);
     config = mergeConfigs(defaults, written);
     console.log(`  ${created ? "Created" : "Updated"} ${LOCAL_CONFIG_NAME}: ${newBills.length} bill(s) added as monthly`);
   }

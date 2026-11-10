@@ -549,7 +549,7 @@ function drawMatrixHeader(r: Painter, rep: Report) {
   const tw = r.text("Bill matrix", M, M + 8, { size: 15, weight: "bold" });
   r.text(`${rep.year}`, M + tw + 7, M + 9, { size: 11, weight: "medium", color: C.faint });
   r.text(
-    "Expected months come from config.local.json (over config.default.json) next to the app. Irregular and not-scheduled bills are shown but never flagged.",
+    "Expected months come from config.local.json next to the app. Irregular and not-scheduled bills are shown but never flagged.",
     M,
     M + 25,
     { size: 7.2, color: C.muted }

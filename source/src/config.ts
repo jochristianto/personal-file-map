@@ -1,18 +1,19 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-// Built into the app, so it still works when only the app is copied somewhere
-import embeddedDefaults from "../../config.default.json";
+// source/config.default.json is compiled into the app: the template for new config.local.json files.
+import embeddedDefaults from "../config.default.json";
 
 /**
- * - config.default.json: next to the app (built-in copy if absent). Generic defaults; its "folder"
- *   points at the bills folder.
- * - config.local.json: inside the bills folder, created on first run. That folder's bills.
+ * - config.default.json: built into the app (edit source/config.default.json and rebuild).
+ *   Template for config.local.json, plus base bill schedules.
+ * - config.local.json: next to the app, created on first run from the template. Its "folder" says
+ *   where the bills are; its bill keys replace the same keys in the default.
  */
 export const DEFAULT_CONFIG_NAME = "config.default.json";
 export const LOCAL_CONFIG_NAME = "config.local.json";
 export const CONFIG_FILES = [DEFAULT_CONFIG_NAME, LOCAL_CONFIG_NAME];
-/** "./": the folder the config file is in. Also what a new config.local.json gets. */
+/** "./": the folder the config file is in. Used if no config sets "folder". */
 export const DEFAULT_FOLDER = "./";
 
 /**
@@ -50,23 +51,14 @@ export interface PartialConfig {
   bills?: Record<string, ScheduleSpec>;
 }
 
-const LOCAL_HELP = [
-  "This folder's bills. Created automatically; any bill found that isn't listed yet is added as \"monthly\". Adjust as needed: your entries are never changed. Keys here replace the same keys in config.default.json.",
-  '"folder": where the bill files are, relative to this file. "./" = this folder (relative, absolute or "~/..." paths work).',
-  'Bill values: "monthly", "quarterly", "irregular", null, {"months": [1, 7]}, {"every": 2, "from": 3, "until": 12}. A key also covers bills that start with it; the longest match wins.',
-];
-
-/**
- * config.default.json next to the app, else the built-in copy. With only the app copied somewhere,
- * the app's own folder is the bills folder (the built-in "./samples" only makes sense in the repo).
- */
-export function loadDefaults(appDir: string): PartialConfig {
-  return readConfigFile(appDir, DEFAULT_CONFIG_NAME) ?? { ...validate(embeddedDefaults, DEFAULT_CONFIG_NAME), folder: DEFAULT_FOLDER };
+/** The built-in config.default.json. */
+export function loadDefaults(): PartialConfig {
+  return validate(embeddedDefaults, `built-in ${DEFAULT_CONFIG_NAME}`);
 }
 
-/** config.local.json inside the bills folder; null if it doesn't exist yet. */
-export function loadLocal(billsDir: string): PartialConfig | null {
-  return readConfigFile(billsDir, LOCAL_CONFIG_NAME);
+/** config.local.json in `dir` (the app's folder); null if it doesn't exist yet. */
+export function loadLocal(dir: string): PartialConfig | null {
+  return readConfigFile(dir, LOCAL_CONFIG_NAME);
 }
 
 /** Bill keys in config.local.json replace the same keys in config.default.json. */
@@ -75,16 +67,16 @@ export function mergeConfigs(defaults: PartialConfig, local: PartialConfig | nul
 }
 
 /**
- * Adds bills as "monthly" to config.local.json, creating the file (with `folderIfNew`) if needed.
- * Existing entries, other keys and their order are kept; new bills are appended.
+ * Adds bills as "monthly" to config.local.json in `dir`. If the file doesn't exist yet it starts as a
+ * copy of the built-in config.default.json. Existing entries, other keys and their order are kept.
  */
-export function addBillsToLocalConfig(appDir: string, billNames: string[], folderIfNew: string): PartialConfig {
-  const file = path.join(appDir, LOCAL_CONFIG_NAME);
+export function addBillsToLocalConfig(dir: string, billNames: string[]): PartialConfig {
+  const file = path.join(dir, LOCAL_CONFIG_NAME);
   let raw: Record<string, unknown>;
   try {
-    raw = JSON.parse(fs.readFileSync(file, "utf8").replace(/^﻿/, "")) as Record<string, unknown>;
+    raw = JSON.parse(fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "")) as Record<string, unknown>;
   } catch {
-    raw = { _help: LOCAL_HELP, folder: folderIfNew, bills: {} }; // missing (bad JSON was already reported by loadConfigs)
+    raw = structuredClone(embeddedDefaults) as Record<string, unknown>; // missing (bad JSON was already reported)
   }
   const bills = { ...((raw.bills as Record<string, ScheduleSpec> | undefined) ?? {}) };
   const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
